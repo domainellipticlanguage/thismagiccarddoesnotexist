@@ -1,0 +1,9 @@
+node_modules
+dist
+frontend/dist
+frontend/node_modules
+.sst
+.env
+.serverless
+*.js.map
+*.d.ts.map

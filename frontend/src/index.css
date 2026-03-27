@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Cinzel", serif;
+  --font-sans: "Inter", sans-serif;
+  --color-gold-400: #d4a843;
+  --color-gold-500: #b8922e;
+  --color-gold-600: #9a7a24;
+}
