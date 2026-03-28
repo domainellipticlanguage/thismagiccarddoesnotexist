@@ -126,14 +126,15 @@ export async function generateCard(
 
 export async function applyFieldEdits(
   originalCardId: string,
-  newCrucibleText: string,
-  creatorId: string
+  creatorId: string,
+  newCrucibleText?: string,
+  rawCardData?: CardData,
 ): Promise<CardDocument> {
   const original = await getCard(originalCardId);
   if (!original) throw new Error(`Card ${originalCardId} not found`);
 
   const cardId = uuid();
-  const cardData = parseCard(newCrucibleText);
+  const cardData: CardData = rawCardData ?? parseCard(newCrucibleText!);
 
   await generateArtForAllFaces(cardData);
 

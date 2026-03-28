@@ -487,7 +487,7 @@ function LinkedCardEditor({ form, onChange, loading }: { form: LinkedFormState; 
 }
 
 // ---------------------------------------------------------------------------
-// Build crucible text (client-side)
+// Build CardData from form state
 // ---------------------------------------------------------------------------
 
 interface FormState {
@@ -524,84 +524,69 @@ interface FormState {
   designer: string;
 }
 
-function buildCrucibleText(form: FormState, linkedForm?: LinkedFormState): string {
-  const lines: string[] = [];
+function linkedFormToCardData(linked: LinkedFormState): CardData {
+  const subtypes = linked.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const isCreature = linked.types.includes("creature");
+  const isPw = linked.types.includes("planeswalker");
+  const isBattle = linked.types.includes("battle");
+  const cd: CardData = {
+    name: linked.name || undefined,
+    manaCost: linked.manaCost || undefined,
+    types: linked.types.length ? linked.types : undefined,
+    subtypes: subtypes.length ? subtypes : undefined,
+    abilities: linked.abilitiesText.trim() || undefined,
+    power: isCreature && linked.power ? linked.power : undefined,
+    toughness: isCreature && linked.toughness ? linked.toughness : undefined,
+    startingLoyalty: isPw && linked.startingLoyalty ? linked.startingLoyalty : undefined,
+    battleDefense: isBattle && linked.battleDefense ? linked.battleDefense : undefined,
+    flavorText: linked.flavorText || undefined,
+    artDescription: linked.artDescription || undefined,
+  };
+  return cd;
+}
 
-  // Line 1: Name {ManaCost}
-  let nameLine = form.name || "Untitled";
-  if (form.manaCost) nameLine += ` ${form.manaCost}`;
-  lines.push(nameLine);
+function buildCardData(form: FormState, linkedForm?: LinkedFormState): CardData {
+  const subtypes = form.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const isCreature = form.types.includes("creature");
+  const isPw = form.types.includes("planeswalker");
+  const isBattle = form.types.includes("battle");
 
-  // Metadata
-  if (form.artDescription) lines.push(`Art Description: ${form.artDescription}`);
-  if (form.artUrl) lines.push(`Art URL: ${form.artUrl}`);
-  if (form.rarity) lines.push(`Rarity: ${form.rarity}`);
-  if (form.accentColor) lines.push(`Accent: ${capitalize(form.accentColor)}`);
-  if (form.frameColor) lines.push(`Frame Color: ${capitalize(form.frameColor)}`);
-  if (form.frameEffect && form.frameEffect !== "normal") lines.push(`Frame Effect: ${capitalize(form.frameEffect)}`);
-  if (form.colorIndicator.length > 0) lines.push(`Color Indicator: ${form.colorIndicator.map(capitalize).join(", ")}`);
-  if (form.legendCrown === true) lines.push(`Legend Crown: yes`);
-  if (form.legendCrown === false) lines.push(`Legend Crown: no`);
-  if (form.nameLineColor) lines.push(`Name Line Color: ${capitalize(form.nameLineColor)}`);
-  if (form.typeLineColor) lines.push(`Type Line Color: ${capitalize(form.typeLineColor)}`);
-  if (form.ptBoxColor) lines.push(`PT Box Color: ${capitalize(form.ptBoxColor)}`);
-  if (form.cardTemplate) lines.push(`Template: ${form.cardTemplate}`);
-  if (form.artist) lines.push(`Artist: ${form.artist}`);
-  if (form.setCode) lines.push(`Set: ${form.setCode}`);
-  if (form.collectorNumber) lines.push(`Collector Number: ${form.collectorNumber}`);
-  if (form.designer) lines.push(`Designer: ${form.designer}`);
-  if (form.linkType) lines.push(`Link: ${form.linkType}`);
+  const cd: CardData = {
+    name: form.name || undefined,
+    manaCost: form.manaCost || undefined,
+    supertypes: form.supertypes.length ? form.supertypes : undefined,
+    types: form.types.length ? form.types : undefined,
+    subtypes: subtypes.length ? subtypes : undefined,
+    rarity: form.rarity || undefined,
+    abilities: form.abilitiesText.trim() || undefined,
+    power: isCreature && form.power ? form.power : undefined,
+    toughness: isCreature && form.toughness ? form.toughness : undefined,
+    startingLoyalty: isPw && form.startingLoyalty ? form.startingLoyalty : undefined,
+    battleDefense: isBattle && form.battleDefense ? form.battleDefense : undefined,
+    flavorText: form.flavorText || undefined,
+    artDescription: form.artDescription || undefined,
+    artUrl: form.artUrl || undefined,
+    // Visual overrides — only include when explicitly set
+    cardTemplate: form.cardTemplate || undefined,
+    frameColor: form.frameColor || undefined,
+    accentColor: form.accentColor || undefined,
+    frameEffect: form.frameEffect || undefined,
+    colorIndicator: form.colorIndicator.length ? form.colorIndicator : undefined,
+    legendCrown: form.legendCrown === "" ? undefined : form.legendCrown,
+    nameLineColor: form.nameLineColor || undefined,
+    typeLineColor: form.typeLineColor || undefined,
+    ptBoxColor: form.ptBoxColor || undefined,
+    // Link
+    linkType: form.linkType || undefined,
+    linkedCard: linkedForm && form.linkType ? linkedFormToCardData(linkedForm) : undefined,
+    // Metadata
+    artist: form.artist || undefined,
+    setCode: form.setCode || undefined,
+    collectorNumber: form.collectorNumber || undefined,
+    designer: form.designer || undefined,
+  };
 
-  // Type line
-  const typeParts: string[] = [];
-  for (const st of form.supertypes) typeParts.push(capitalize(st));
-  for (const t of form.types) typeParts.push(capitalize(t));
-  let typeLine = typeParts.join(" ");
-  const subtypesList = form.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
-  if (subtypesList.length > 0) typeLine += " \u2014 " + subtypesList.join(" ");
-  lines.push(typeLine);
-
-  // Loyalty / Defense — only emit when relevant type is selected
-  const hasCreatureType = form.types.includes("creature");
-  const hasPwType = form.types.includes("planeswalker");
-  const hasBattleType = form.types.includes("battle");
-  if (form.startingLoyalty && hasPwType) lines.push(`Loyalty: ${form.startingLoyalty}`);
-  if (form.battleDefense && hasBattleType) lines.push(`Defense: ${form.battleDefense}`);
-
-  // Abilities
-  if (form.abilitiesText.trim()) lines.push(form.abilitiesText.trim());
-
-  // P/T — only emit when creature type is selected
-  if (form.power && form.toughness && hasCreatureType) lines.push(`${form.power}/${form.toughness}`);
-
-  // Flavor text
-  if (form.flavorText) {
-    for (const fl of form.flavorText.split("\n")) lines.push(`Flavor Text: ${fl}`);
-  }
-
-  // Linked card
-  if (linkedForm && form.linkType) {
-    lines.push("---");
-    let backName = linkedForm.name || "Untitled";
-    if (linkedForm.manaCost) backName += ` ${linkedForm.manaCost}`;
-    lines.push(backName);
-    if (linkedForm.artDescription) lines.push(`Art Description: ${linkedForm.artDescription}`);
-    const backTypeParts: string[] = [];
-    for (const t of linkedForm.types) backTypeParts.push(capitalize(t));
-    let backTypeLine = backTypeParts.join(" ");
-    const backSubtypes = linkedForm.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
-    if (backSubtypes.length > 0) backTypeLine += " \u2014 " + backSubtypes.join(" ");
-    if (backTypeLine) lines.push(backTypeLine);
-    if (linkedForm.startingLoyalty) lines.push(`Loyalty: ${linkedForm.startingLoyalty}`);
-    if (linkedForm.battleDefense) lines.push(`Defense: ${linkedForm.battleDefense}`);
-    if (linkedForm.abilitiesText.trim()) lines.push(linkedForm.abilitiesText.trim());
-    if (linkedForm.power && linkedForm.toughness) lines.push(`${linkedForm.power}/${linkedForm.toughness}`);
-    if (linkedForm.flavorText) {
-      for (const fl of linkedForm.flavorText.split("\n")) lines.push(`Flavor Text: ${fl}`);
-    }
-  }
-
-  return lines.join("\n");
+  return cd;
 }
 
 // ---------------------------------------------------------------------------
@@ -610,12 +595,11 @@ function buildCrucibleText(form: FormState, linkedForm?: LinkedFormState): strin
 
 interface CardEditFormProps {
   initialCardData: CardData;
-  initialCrucibleText: string;
-  onSave: (crucibleText: string) => void;
+  onSave: (cardData: CardData) => void;
   loading: boolean;
 }
 
-export function CardEditForm({ initialCardData, initialCrucibleText, onSave, loading }: CardEditFormProps) {
+export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormProps) {
   const cd = initialCardData;
 
   const [form, setForm] = useState<FormState>(() => ({
@@ -751,14 +735,14 @@ export function CardEditForm({ initialCardData, initialCrucibleText, onSave, loa
 
   const hasLinkedCard = linkTypeNeedsLinkedCard(form.linkType);
 
-  const crucibleText = useMemo(
-    () => buildCrucibleText(form, hasLinkedCard ? linkedForm : undefined),
+  const cardData = useMemo(
+    () => buildCardData(form, hasLinkedCard ? linkedForm : undefined),
     [form, linkedForm, hasLinkedCard],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loading) onSave(crucibleText);
+    if (!loading) onSave(cardData);
   };
 
   // Show P/T if creature type selected
@@ -1025,14 +1009,14 @@ export function CardEditForm({ initialCardData, initialCrucibleText, onSave, loa
         </div>
       </details>
 
-      {/* Crucible Text Preview */}
+      {/* Preview */}
       <details className="border border-neutral-800 rounded-lg">
         <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
-          Crucible Text Preview
+          Preview CardData
         </summary>
         <div className="px-4 pb-4 pt-2">
           <pre className="text-sm text-neutral-300 bg-neutral-900 p-3 rounded-lg whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
-            {crucibleText}
+            {JSON.stringify(cardData, null, 2)}
           </pre>
         </div>
       </details>

@@ -65,7 +65,8 @@ export interface CreateCardRequest {
 }
 
 export interface EditCardFieldsRequest {
-  crucibleText: string;
+  crucibleText?: string;
+  cardData?: CardData;
 }
 
 export interface LLMCardResponse {

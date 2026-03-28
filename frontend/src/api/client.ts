@@ -1,4 +1,4 @@
-import type { Card, CardResponse } from "../types/card";
+import type { Card, CardData, CardResponse } from "../types/card";
 
 const API_BASE = "/api";
 
@@ -20,11 +20,11 @@ export async function deleteCard(id: string): Promise<void> {
   if (!response.ok) throw new Error("Failed to delete card");
 }
 
-export async function editCardFields(id: string, crucibleText: string): Promise<string> {
+export async function editCardFields(id: string, cardData: CardData): Promise<string> {
   const response = await fetch(`${API_BASE}/cards/${id}/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ crucibleText }),
+    body: JSON.stringify({ cardData }),
   });
   if (!response.ok) {
     const error = await response.json();

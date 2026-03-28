@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { fetchCard, createCard, editCardFields } from "../api/client";
-import type { Card } from "../types/card";
+import type { Card, CardData } from "../types/card";
 import { MtgCard } from "@domainellipticlanguage/mtg-crucible/react";
 import { CardEditForm } from "../components/CardEditForm";
 import { CreateForm } from "../components/CreateForm";
@@ -31,11 +31,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     catch (err: any) { setError(err.message); setSaving(false); }
   }
 
-  async function handleAdvancedSave(crucibleText: string) {
+  async function handleAdvancedSave(cardData: CardData) {
     if (!currentId) return;
     setSaving(true); setError(null);
     try {
-      const newId = await editCardFields(currentId, crucibleText);
+      const newId = await editCardFields(currentId, cardData);
       // Stay on edit page — update URL and reload card to show new preview
       const data = await fetchCard(newId);
       setCard(data.card);
@@ -77,7 +77,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
                 <CreateForm onSubmit={handleAIEdit} loading={saving} />
               </div>
             ) : (
-              <CardEditForm initialCardData={card.cardData} initialCrucibleText={card.crucibleText} onSave={handleAdvancedSave} loading={saving} />
+              <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} />
             )}
           </div>
         </div>

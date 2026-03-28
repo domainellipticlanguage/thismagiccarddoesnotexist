@@ -96,12 +96,12 @@ app.delete("/api/cards/:id", async (req, res) => {
 app.post("/api/cards/:id/edit", async (req, res) => {
   try {
     const body = req.body as EditCardFieldsRequest;
-    if (!body.crucibleText) {
-      return res.status(400).json({ error: "crucibleText is required" });
+    if (!body.crucibleText && !body.cardData) {
+      return res.status(400).json({ error: "crucibleText or cardData is required" });
     }
 
     const creatorId = getCreatorId(req);
-    const newCard = await applyFieldEdits(req.params.id, body.crucibleText, creatorId);
+    const newCard = await applyFieldEdits(req.params.id, creatorId, body.crucibleText, body.cardData);
     res.json({ card_id: newCard.id });
   } catch (err: any) {
     console.error("[API] POST edit error:", err);
