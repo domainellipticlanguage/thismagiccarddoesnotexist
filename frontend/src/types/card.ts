@@ -1,4 +1,4 @@
-import type { CardData, RenderedCardDisplay } from "@domainellipticlanguage/mtg-crucible";
+import type { CardData, MtgCardDisplayData } from "@domainellipticlanguage/mtg-crucible";
 
 export interface Card {
   id: string;
@@ -11,7 +11,7 @@ export interface Card {
   suggestionMechanics: string;
   artEditMode?: string;
   renderedUrls: string[];
-  display?: RenderedCardDisplay;
+  display?: MtgCardDisplayData;
   creatorId: string;
   parentId?: string;
   createdDate: string;

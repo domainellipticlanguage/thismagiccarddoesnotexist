@@ -46,13 +46,10 @@ app.get("/api/cards", async (_req, res) => {
   try {
     const limit = parseInt((_req.query.limit as string) || "300", 10);
     const cards = await getLatestCards(limit);
-    // Build display objects with signed URLs for each card
-    const cardsWithDisplay = await Promise.all(
-      cards.map(async (card) => ({
-        ...card,
-        display: await buildDisplay(card.renderedUrls),
-      }))
-    );
+    const cardsWithDisplay = cards.map((card) => ({
+      ...card,
+      display: buildDisplay(card),
+    }));
     res.json({ cards: cardsWithDisplay });
   } catch (err: any) {
     console.error("[API] GET /api/cards error:", err);
@@ -68,8 +65,7 @@ app.get("/api/cards/:id", async (req, res) => {
     const creatorId = getCreatorId(req);
     const canEdit = isDebug() || card.creatorId === creatorId;
 
-    // Build display with freshly signed URLs
-    card.display = await buildDisplay(card.renderedUrls);
+    card.display = buildDisplay(card);
 
     const response: CardResponse = { card, canEdit, canDelete: canEdit };
     res.json(response);

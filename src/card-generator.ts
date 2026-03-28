@@ -73,10 +73,9 @@ export async function generateCard(
 
   // 4. Render
   console.log("[Pipeline] 4. Render");
-  const { rendered, renderedUrls } = await renderAndUpload(cardData);
+  const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
 
-  // Strip art URLs before persisting (they're public S3 URLs but we
-  // don't want them in crucibleText — artDescription is sufficient)
+  // Strip art URLs before persisting
   stripArtUrls(cardData);
 
   // 5. Store
@@ -84,6 +83,8 @@ export async function generateCard(
   const rows = flattenCardData(cardId, cardData, renderedUrls, {
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
+    scryfallJson: rendered.scryfallJson,
+    rotations,
     prompt: description,
     explanation: llmResult.explanation,
     suggestionArtwork: llmResult.suggestion_artwork,
@@ -109,6 +110,8 @@ export async function generateCard(
     cardData,
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
+    scryfallJson: rendered.scryfallJson,
+    rotations,
     prompt: description,
     explanation: llmResult.explanation,
     suggestionArtwork: llmResult.suggestion_artwork,
@@ -135,15 +138,16 @@ export async function applyFieldEdits(
   const cardId = uuid();
   const cardData = parseCard(newCrucibleText);
 
-  // Generate art for faces that need it
   await generateArtForAllFaces(cardData);
 
-  const { rendered, renderedUrls } = await renderAndUpload(cardData);
+  const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
   stripArtUrls(cardData);
 
   const rows = flattenCardData(cardId, cardData, renderedUrls, {
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
+    scryfallJson: rendered.scryfallJson,
+    rotations,
     prompt: original.prompt,
     explanation: original.explanation,
     suggestionArtwork: original.suggestionArtwork,
@@ -164,6 +168,8 @@ export async function applyFieldEdits(
     cardData,
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
+    scryfallJson: rendered.scryfallJson,
+    rotations,
     prompt: original.prompt,
     explanation: original.explanation,
     suggestionArtwork: original.suggestionArtwork,

@@ -14,15 +14,16 @@ export async function generateArt(
     artDescription.replace(/\.$/, "") +
     ". In the style of high quality epic fantasy digital art";
 
-  console.log(`[Art] Generating (${width}x${height}): ${fullPrompt.slice(0, 80)}...`);
+  const { w, h } = fitDimensions(width, height, 256, 1440);
+  console.log(`[Art] Generating (${w}x${h}): ${fullPrompt.slice(0, 80)}...`);
   const start = Date.now();
 
   const output = await replicate.run("prunaai/p-image", {
     input: {
       prompt: fullPrompt,
       aspect_ratio: "custom",
-      width,
-      height,
+      width: w,
+      height: h,
       prompt_upsampling: true,
     },
   });
@@ -58,5 +59,19 @@ export async function editArt(
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
   return uploadFromUrl(tempUrl, s3Key);
+}
+
+/** Scale dimensions to fit within [min, max] while preserving aspect ratio. */
+function fitDimensions(
+  width: number,
+  height: number,
+  min: number,
+  max: number
+): { w: number; h: number } {
+  const scale = Math.min(max / Math.max(width, height), Math.max(min / Math.min(width, height), 1));
+  return {
+    w: Math.round(width * scale),
+    h: Math.round(height * scale),
+  };
 }
 

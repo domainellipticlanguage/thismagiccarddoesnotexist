@@ -79,6 +79,8 @@ function assembleCard(rows: CardRow[]): CardDocument {
     cardData,
     crucibleText: main.crucibleText || "",
     scryfallText: main.scryfallText || "",
+    scryfallJson: main.scryfallJson || "",
+    rotations: main.rotations || [],
     prompt: main.prompt || "",
     explanation: main.explanation || "",
     suggestionArtwork: main.suggestionArtwork || "",

@@ -27,14 +27,11 @@ export function CreatePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="font-display text-2xl text-gold-400 mb-6">{mode === "copy" ? "Remix Card" : "Create a Card"}</h1>
-      {loading ? (
-        <LoadingSpinner fullScreen message="Generating your card... this takes about 5-10 seconds" />
-      ) : (
-        <>
-          {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
-          <CreateForm onSubmit={handleCreate} loading={loading} />
-        </>
-      )}
+      {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
+      {loading && <LoadingSpinner message="Generating your card... this takes about 5-10 seconds" />}
+      <div className={loading ? "hidden" : ""}>
+        <CreateForm onSubmit={handleCreate} loading={loading} />
+      </div>
     </div>
   );
 }
