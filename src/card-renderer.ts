@@ -11,7 +11,7 @@ import type {
   RenderedCardDisplay,
 } from "@domainellipticlanguage/mtg-crucible";
 import { v4 as uuid } from "uuid";
-import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
+import { uploadBuffer, getPresignedUrl } from "./s3-storage.js";
 
 export { parseCard, formatCard, getArtDimensions, toDisplayCard };
 export type { CardData, RenderedCard, RenderedCardDisplay };
@@ -38,7 +38,7 @@ export async function renderAndUpload(cardData: CardData): Promise<{
 
   const s3Key = `rendered/${uuid()}.png`;
   const s3Uri = await uploadBuffer(rendered.frontFace, s3Key);
-  const publicUrl = getPublicUrl(s3Uri);
+  const signedUrl = await getPresignedUrl(s3Uri);
 
-  return { rendered, renderedS3Uri: s3Uri, renderedUrl: publicUrl };
+  return { rendered, renderedS3Uri: s3Uri, renderedUrl: signedUrl };
 }

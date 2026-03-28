@@ -1,6 +1,6 @@
 import Replicate from "replicate";
 import { v4 as uuid } from "uuid";
-import { uploadFromUrl, getPublicUrl } from "./s3-storage.js";
+import { uploadFromUrl, getPresignedUrl } from "./s3-storage.js";
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
@@ -31,9 +31,9 @@ export async function generateArt(
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
   const s3Uri = await uploadFromUrl(tempUrl, s3Key);
-  const publicUrl = getPublicUrl(s3Uri);
-  console.log(`[Art] Uploaded: ${publicUrl}`);
-  return publicUrl;
+  const signedUrl = await getPresignedUrl(s3Uri);
+  console.log(`[Art] Uploaded: ${s3Key}`);
+  return signedUrl;
 }
 
 export async function editArt(
@@ -57,7 +57,7 @@ export async function editArt(
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
   const s3Uri = await uploadFromUrl(tempUrl, s3Key);
-  return getPublicUrl(s3Uri);
+  return getPresignedUrl(s3Uri);
 }
 
 function computeAspectRatio(width: number, height: number): string {
