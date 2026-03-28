@@ -13,6 +13,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const location = useLocation();
   const mode = propMode || "edit";
   const [card, setCard] = useState<Card | null>(null);
+  const [currentId, setCurrentId] = useState(id);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +32,17 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   }
 
   async function handleAdvancedSave(crucibleText: string) {
-    if (!id) return;
+    if (!currentId) return;
     setSaving(true); setError(null);
-    try { navigate(`/card/${await editCardFields(id, crucibleText)}`); }
-    catch (err: any) { setError(err.message); setSaving(false); }
+    try {
+      const newId = await editCardFields(currentId, crucibleText);
+      // Stay on edit page — update URL and reload card to show new preview
+      const data = await fetchCard(newId);
+      setCard(data.card);
+      setCurrentId(newId);
+      window.history.replaceState(null, "", `/card/${newId}/edit`);
+    } catch (err: any) { setError(err.message); }
+    finally { setSaving(false); }
   }
 
   if (loading) return <LoadingSpinner fullScreen />;
@@ -53,12 +61,13 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
           </div>
         )}
       </div>
-      {saving ? (
-        <LoadingSpinner fullScreen message={editMode === "ai" ? "AI is editing your card..." : "Re-rendering card..."} />
+      {saving && editMode === "ai" ? (
+        <LoadingSpinner fullScreen message="AI is editing your card..." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 relative">
             {card.display && <MtgCard card={card.display} style={{ width: "100%" }} />}
+            {saving && <div className="absolute inset-0 bg-neutral-950/60 rounded-lg flex items-center justify-center"><LoadingSpinner message="Re-rendering..." /></div>}
           </div>
           <div className="lg:col-span-2">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}

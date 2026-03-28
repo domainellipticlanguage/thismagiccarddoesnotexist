@@ -75,9 +75,6 @@ export async function generateCard(
   console.log("[Pipeline] 4. Render");
   const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
 
-  // Strip art URLs before persisting
-  stripArtUrls(cardData);
-
   // 5. Store
   console.log("[Pipeline] 5. Store");
   const rows = flattenCardData(cardId, cardData, renderedUrls, {
@@ -141,7 +138,6 @@ export async function applyFieldEdits(
   await generateArtForAllFaces(cardData);
 
   const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
-  stripArtUrls(cardData);
 
   const rows = flattenCardData(cardId, cardData, renderedUrls, {
     crucibleText: rendered.crucibleText,

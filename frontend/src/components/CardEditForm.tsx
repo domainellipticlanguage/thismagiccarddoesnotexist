@@ -561,15 +561,18 @@ function buildCrucibleText(form: FormState, linkedForm?: LinkedFormState): strin
   if (subtypesList.length > 0) typeLine += " \u2014 " + subtypesList.join(" ");
   lines.push(typeLine);
 
-  // Loyalty / Defense
-  if (form.startingLoyalty) lines.push(`Loyalty: ${form.startingLoyalty}`);
-  if (form.battleDefense) lines.push(`Defense: ${form.battleDefense}`);
+  // Loyalty / Defense — only emit when relevant type is selected
+  const hasCreatureType = form.types.includes("creature");
+  const hasPwType = form.types.includes("planeswalker");
+  const hasBattleType = form.types.includes("battle");
+  if (form.startingLoyalty && hasPwType) lines.push(`Loyalty: ${form.startingLoyalty}`);
+  if (form.battleDefense && hasBattleType) lines.push(`Defense: ${form.battleDefense}`);
 
   // Abilities
   if (form.abilitiesText.trim()) lines.push(form.abilitiesText.trim());
 
-  // P/T
-  if (form.power && form.toughness) lines.push(`${form.power}/${form.toughness}`);
+  // P/T — only emit when creature type is selected
+  if (form.power && form.toughness && hasCreatureType) lines.push(`${form.power}/${form.toughness}`);
 
   // Flavor text
   if (form.flavorText) {
