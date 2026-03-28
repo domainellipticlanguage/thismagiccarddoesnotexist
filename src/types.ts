@@ -1,36 +1,59 @@
-import type { CardData, RenderedCardDisplay } from "@domainellipticlanguage/mtg-crucible";
+import type { CardData, LinkType, RenderedCardDisplay } from "@domainellipticlanguage/mtg-crucible";
 
-export interface CardRecord {
+/** A single row in DynamoDB — one face/sub-card of a card. */
+export interface CardRow {
   id: string;
-  crucibleText: string;
+  subCardIndex: number;
   cardData: CardData;
+  renderedS3Uri: string;
+
+  // Only on subCardIndex 0:
+  crucibleText?: string;
+  scryfallText?: string;
+  prompt?: string;
+  explanation?: string;
+  suggestionArtwork?: string;
+  suggestionMechanics?: string;
+  artEditMode?: string;
+  creatorId?: string;
+  parentId?: string;
+  createdDate?: string;
+  isDeleted?: boolean;
+  isFinished?: boolean;
+  isSuperseded?: boolean;
+  linkType?: LinkType;
+}
+
+/** Assembled card with all faces, ready for API response. */
+export interface CardDocument {
+  id: string;
+  cardData: CardData; // full tree with linkedCard populated
+  crucibleText: string;
   scryfallText: string;
   prompt: string;
   explanation: string;
   suggestionArtwork: string;
   suggestionMechanics: string;
   artEditMode?: string;
-  artS3Uri: string;
-  frontS3Uri: string;
-  backS3Uri?: string;
   creatorId: string;
   parentId?: string;
-  sequenceNumber: number;
-  dummyHashKey: number;
   createdDate: string;
   isDeleted: boolean;
   isFinished: boolean;
   isSuperseded: boolean;
+  display?: RenderedCardDisplay;
+  /** S3 URIs for each face, indexed by subCardIndex */
+  renderedS3Uris: string[];
 }
 
 export interface CardResponse {
-  card: CardRecord;
+  card: CardDocument;
   canEdit: boolean;
   canDelete: boolean;
 }
 
 export interface CardsResponse {
-  cards: CardRecord[];
+  cards: CardDocument[];
 }
 
 export interface CreateCardRequest {

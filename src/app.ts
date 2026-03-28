@@ -8,9 +8,7 @@ import {
 } from "./card-table.js";
 import { generateCard, applyFieldEdits } from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
-import { getPresignedUrl } from "./s3-storage.js";
 import type {
-  CardRecord,
   CreateCardRequest,
   EditCardFieldsRequest,
   CardResponse,
@@ -52,7 +50,7 @@ app.get("/api/cards", async (_req, res) => {
     const cardsWithDisplay = await Promise.all(
       cards.map(async (card) => ({
         ...card,
-        display: await buildDisplay(card),
+        display: await buildDisplay(card.renderedS3Uris),
       }))
     );
     res.json({ cards: cardsWithDisplay });
@@ -71,7 +69,7 @@ app.get("/api/cards/:id", async (req, res) => {
     const canEdit = isDebug() || card.creatorId === creatorId;
 
     // Build display with freshly signed URLs
-    card.display = await buildDisplay(card);
+    card.display = await buildDisplay(card.renderedS3Uris);
 
     const response: CardResponse = { card, canEdit, canDelete: canEdit };
     res.json(response);

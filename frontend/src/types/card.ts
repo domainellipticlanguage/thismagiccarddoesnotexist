@@ -10,13 +10,10 @@ export interface Card {
   suggestionArtwork: string;
   suggestionMechanics: string;
   artEditMode?: string;
-  artS3Uri: string;
-  frontS3Uri: string;
-  backS3Uri?: string;
+  renderedS3Uris: string[];
   display?: RenderedCardDisplay;
   creatorId: string;
   parentId?: string;
-  sequenceNumber: number;
   createdDate: string;
   isDeleted: boolean;
   isFinished: boolean;

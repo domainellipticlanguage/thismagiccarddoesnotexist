@@ -26,49 +26,54 @@ export function getArtDimensionsFromText(crucibleText: string): {
   return { width: dims.width, height: dims.height, cardData };
 }
 
+/** Render a full card (all faces) and upload each face to S3.
+ *  Returns the RenderedCard and an array of S3 URIs (one per face). */
 export async function renderAndUpload(cardData: CardData): Promise<{
   rendered: RenderedCard;
-  frontS3Uri: string;
-  backS3Uri?: string;
+  renderedS3Uris: string[];
 }> {
   console.log(`[Render] Rendering: ${cardData.name || "Untitled"}`);
   const start = Date.now();
   const rendered = await renderCard(cardData);
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 
-  const frontKey = `rendered/${uuid()}.png`;
-  const frontS3Uri = await uploadBuffer(rendered.frontFace, frontKey);
+  const uris: string[] = [];
 
-  let backS3Uri: string | undefined;
+  // Front face
+  const frontKey = `rendered/${uuid()}.png`;
+  uris.push(await uploadBuffer(rendered.frontFace, frontKey));
+
+  // Back face if present
   if (rendered.backFace) {
     const backKey = `rendered/${uuid()}-back.png`;
-    backS3Uri = await uploadBuffer(rendered.backFace, backKey);
+    uris.push(await uploadBuffer(rendered.backFace, backKey));
   }
 
-  return { rendered, frontS3Uri, backS3Uri };
+  return { rendered, renderedS3Uris: uris };
 }
 
-/** Build a RenderedCardDisplay with presigned S3 URLs (call at serve time, not persist time). */
-export async function buildDisplay(record: {
-  frontS3Uri?: string;
-  backS3Uri?: string;
-  crucibleText: string;
-  scryfallText: string;
-  cardData: CardData;
-}): Promise<RenderedCardDisplay | undefined> {
-  if (!record.frontS3Uri) return undefined;
-  const frontFace = await getPresignedUrl(record.frontS3Uri);
-  const backFace = record.backS3Uri ? await getPresignedUrl(record.backS3Uri) : undefined;
+/** Build a RenderedCardDisplay with presigned S3 URLs. */
+export async function buildDisplay(
+  renderedS3Uris: string[],
+  rendered?: RenderedCard
+): Promise<RenderedCardDisplay | undefined> {
+  if (!renderedS3Uris.length || !renderedS3Uris[0]) return undefined;
+
+  const frontFace = await getPresignedUrl(renderedS3Uris[0]);
+  const backFace =
+    renderedS3Uris.length > 1 ? await getPresignedUrl(renderedS3Uris[1]) : undefined;
 
   return {
     frontFace,
-    frontFaceOrientation: "vertical",
+    frontFaceOrientation: rendered?.frontFaceOrientation || "vertical",
     backFace,
-    backFaceOrientation: backFace ? "vertical" : undefined,
-    name: record.cardData.name || "",
-    rotations: [],
-    scryfallJson: "",
-    scryfallText: record.scryfallText,
-    crucibleText: record.crucibleText,
+    backFaceOrientation: backFace
+      ? rendered?.backFaceOrientation || "vertical"
+      : undefined,
+    name: rendered?.normalizedCardData?.name || "",
+    rotations: rendered?.rotations || [],
+    scryfallJson: rendered?.scryfallJson || "",
+    scryfallText: rendered?.scryfallText || "",
+    crucibleText: rendered?.crucibleText || "",
   };
 }

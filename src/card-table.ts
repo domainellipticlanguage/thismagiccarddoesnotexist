@@ -1,12 +1,13 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
   QueryCommand,
+  PutCommand,
   UpdateCommand,
+  ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { CardRecord } from "./types.js";
+import type { CardData } from "@domainellipticlanguage/mtg-crucible";
+import type { CardRow, CardDocument } from "./types.js";
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -16,22 +17,144 @@ function tableName(): string {
   return process.env.DYNAMODB_TABLE || "thismagiccarddoesnotexist3";
 }
 
-export async function getCard(id: string): Promise<CardRecord | undefined> {
-  const result = await client.send(
-    new GetCommand({ TableName: tableName(), Key: { id } })
+/** Write all rows for a card (one per face). */
+export async function putCardRows(rows: CardRow[]): Promise<void> {
+  await Promise.all(
+    rows.map((row) =>
+      client.send(new PutCommand({ TableName: tableName(), Item: row }))
+    )
   );
-  return result.Item as CardRecord | undefined;
 }
 
-export async function putCard(card: CardRecord): Promise<void> {
-  await client.send(new PutCommand({ TableName: tableName(), Item: card }));
+/** Flatten a CardData tree into rows. */
+export function flattenCardData(
+  id: string,
+  cardData: CardData,
+  renderedS3Uris: string[],
+  meta: Omit<CardRow, "id" | "subCardIndex" | "cardData" | "renderedS3Uri">
+): CardRow[] {
+  const rows: CardRow[] = [];
+  let index = 0;
+  let current: CardData | undefined = cardData;
+
+  while (current) {
+    // Strip linkedCard from the stored cardData — it's the next row
+    const { linkedCard, linkType, ...rest }: CardData = current;
+    const row: CardRow = {
+      id,
+      subCardIndex: index,
+      cardData: rest as CardData,
+      renderedS3Uri: renderedS3Uris[index] || "",
+    };
+
+    if (index === 0) {
+      // Metadata only on main face
+      Object.assign(row, meta);
+      if (linkType) row.linkType = linkType;
+    }
+
+    rows.push(row);
+    current = linkedCard;
+    index++;
+  }
+
+  return rows;
+}
+
+/** Assemble rows back into a CardDocument with linkedCard chain. */
+function assembleCard(rows: CardRow[]): CardDocument {
+  const sorted = rows.sort((a, b) => a.subCardIndex - b.subCardIndex);
+  const main = sorted[0];
+
+  // Rebuild linkedCard chain
+  let cardData = { ...main.cardData };
+  if (sorted.length > 1) {
+    let current = cardData;
+    for (let i = 1; i < sorted.length; i++) {
+      current.linkedCard = { ...sorted[i].cardData };
+      if (i === 1 && main.linkType) {
+        cardData.linkType = main.linkType;
+      }
+      current = current.linkedCard;
+    }
+  }
+
+  return {
+    id: main.id,
+    cardData,
+    crucibleText: main.crucibleText || "",
+    scryfallText: main.scryfallText || "",
+    prompt: main.prompt || "",
+    explanation: main.explanation || "",
+    suggestionArtwork: main.suggestionArtwork || "",
+    suggestionMechanics: main.suggestionMechanics || "",
+    artEditMode: main.artEditMode,
+    creatorId: main.creatorId || "",
+    parentId: main.parentId,
+    createdDate: main.createdDate || "",
+    isDeleted: main.isDeleted || false,
+    isFinished: main.isFinished || false,
+    isSuperseded: main.isSuperseded || false,
+    renderedS3Uris: sorted.map((r) => r.renderedS3Uri),
+  };
+}
+
+/** Get a card by id (all faces). */
+export async function getCard(id: string): Promise<CardDocument | undefined> {
+  const result = await client.send(
+    new QueryCommand({
+      TableName: tableName(),
+      KeyConditionExpression: "id = :id",
+      ExpressionAttributeValues: { ":id": id },
+    })
+  );
+  const rows = (result.Items ?? []) as CardRow[];
+  if (rows.length === 0) return undefined;
+  return assembleCard(rows);
+}
+
+/** Get all visible cards (scan, filter, sort by createdDate desc). */
+export async function getLatestCards(limit = 300): Promise<CardDocument[]> {
+  const result = await client.send(
+    new ScanCommand({
+      TableName: tableName(),
+      FilterExpression:
+        "subCardIndex = :zero AND (attribute_not_exists(isDeleted) OR isDeleted = :false) AND isFinished = :true AND (attribute_not_exists(isSuperseded) OR isSuperseded = :false)",
+      ExpressionAttributeValues: {
+        ":zero": 0,
+        ":false": false,
+        ":true": true,
+      },
+    })
+  );
+
+  const mainRows = (result.Items ?? []) as CardRow[];
+
+  // For each main row, query its sub-cards
+  const cards = await Promise.all(
+    mainRows.map(async (main) => {
+      const subResult = await client.send(
+        new QueryCommand({
+          TableName: tableName(),
+          KeyConditionExpression: "id = :id",
+          ExpressionAttributeValues: { ":id": main.id },
+        })
+      );
+      return assembleCard((subResult.Items ?? []) as CardRow[]);
+    })
+  );
+
+  // Sort by createdDate descending
+  cards.sort((a, b) => (b.createdDate || "").localeCompare(a.createdDate || ""));
+
+  return cards.slice(0, limit);
 }
 
 export async function softDeleteCard(id: string): Promise<void> {
   await client.send(
     new UpdateCommand({
       TableName: tableName(),
-      Key: { id },
+      Key: { id, subCardIndex: 0 },
       UpdateExpression: "SET isDeleted = :t",
       ExpressionAttributeValues: { ":t": true },
     })
@@ -42,45 +165,9 @@ export async function markSuperseded(id: string): Promise<void> {
   await client.send(
     new UpdateCommand({
       TableName: tableName(),
-      Key: { id },
+      Key: { id, subCardIndex: 0 },
       UpdateExpression: "SET isSuperseded = :t",
       ExpressionAttributeValues: { ":t": true },
     })
   );
-}
-
-const SENTINEL_ID = "00000000-0000-0000-0000-000000000000";
-
-export async function nextSequenceNumber(): Promise<number> {
-  const result = await client.send(
-    new UpdateCommand({
-      TableName: tableName(),
-      Key: { id: SENTINEL_ID },
-      UpdateExpression:
-        "SET sequenceNumber = if_not_exists(sequenceNumber, :zero) + :inc, dummyHashKey = :dhk",
-      ExpressionAttributeValues: { ":zero": 0, ":inc": 1, ":dhk": 0 },
-      ReturnValues: "UPDATED_NEW",
-    })
-  );
-  return result.Attributes!.sequenceNumber as number;
-}
-
-export async function getLatestCards(limit = 300): Promise<CardRecord[]> {
-  const result = await client.send(
-    new QueryCommand({
-      TableName: tableName(),
-      IndexName: "SequenceNumberIndex",
-      KeyConditionExpression: "dummyHashKey = :dhk",
-      ExpressionAttributeValues: { ":dhk": 0 },
-      ScanIndexForward: false,
-      Limit: limit,
-    })
-  );
-  return (result.Items ?? []).filter(
-    (item: any) =>
-      !item.isDeleted &&
-      item.isFinished &&
-      !item.isSuperseded &&
-      item.id !== SENTINEL_ID
-  ) as CardRecord[];
 }

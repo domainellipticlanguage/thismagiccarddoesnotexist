@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import type { CardRecord } from "./types.js";
+import type { CardDocument } from "./types.js";
 import { createCard as llmCreateCard } from "./llm-client.js";
 import { generateArt, editArt } from "./art-generator.js";
 import {
@@ -10,8 +10,8 @@ import {
 import { getPresignedUrl } from "./s3-storage.js";
 import {
   getCard,
-  putCard,
-  nextSequenceNumber,
+  putCardRows,
+  flattenCardData,
   markSuperseded,
 } from "./card-table.js";
 
@@ -20,11 +20,11 @@ export async function generateCard(
   originalCardId: string | undefined,
   creatorId: string,
   mode: "create" | "edit" | "copy"
-): Promise<CardRecord> {
+): Promise<CardDocument> {
   const cardId = uuid();
   console.log(`[Pipeline] ${mode} card ${cardId}`);
 
-  let originalCard: CardRecord | undefined;
+  let originalCard: CardDocument | undefined;
   let originalCrucibleText: string | undefined;
   if (originalCardId && (mode === "edit" || mode === "copy")) {
     originalCard = await getCard(originalCardId);
@@ -46,10 +46,9 @@ export async function generateCard(
   const artDescription = cardData.artDescription || description;
   let artS3Uri: string;
 
-  if (mode === "edit" && originalCard && llmResult.art_edit_mode === "keep" && originalCard.artS3Uri) {
-    artS3Uri = originalCard.artS3Uri;
-  } else if (mode === "edit" && originalCard && llmResult.art_edit_mode === "edit" && originalCard.artS3Uri) {
-    artS3Uri = await editArt(artDescription, originalCard.artS3Uri, width, height);
+  if (mode === "edit" && originalCard && llmResult.art_edit_mode === "keep" && originalCard.renderedS3Uris?.[0]) {
+    // Keep existing — use the original card's art
+    artS3Uri = originalCard.renderedS3Uris[0]; // TODO: track art S3 URI separately if needed
   } else {
     artS3Uri = await generateArt(artDescription, width, height);
   }
@@ -57,91 +56,108 @@ export async function generateCard(
   // 4. Render — sign the art URL so crucible can fetch it
   console.log("[Pipeline] 4. Render");
   cardData.artUrl = await getPresignedUrl(artS3Uri);
-  const { rendered, frontS3Uri, backS3Uri } = await renderAndUpload(cardData);
 
-  // 5. Store — persist raw S3 URIs only
+  // TODO: if linkedCard has its own art, generate/sign that too
+  const { rendered, renderedS3Uris } = await renderAndUpload(cardData);
+
+  // 5. Store — flatten into rows
   console.log("[Pipeline] 5. Store");
-  const sequenceNumber = await nextSequenceNumber();
-
-  const record: CardRecord = {
-    id: cardId,
+  const rows = flattenCardData(cardId, cardData, renderedS3Uris, {
     crucibleText: rendered.crucibleText,
-    cardData,
     scryfallText: rendered.scryfallText,
     prompt: description,
     explanation: llmResult.explanation,
     suggestionArtwork: llmResult.suggestion_artwork,
     suggestionMechanics: llmResult.suggestion_mechanics,
     artEditMode: llmResult.art_edit_mode,
-    artS3Uri,
-    frontS3Uri,
-    backS3Uri,
     creatorId,
     parentId: originalCardId,
-    sequenceNumber,
-    dummyHashKey: 0,
     createdDate: new Date().toISOString(),
     isDeleted: false,
     isFinished: true,
     isSuperseded: false,
-  };
+  });
 
-  await putCard(record);
+  await putCardRows(rows);
   if (mode === "edit" && originalCardId) {
     await markSuperseded(originalCardId);
   }
 
   console.log(`[Pipeline] Done: ${cardId}`);
-  return record;
+
+  // Return assembled record
+  return {
+    id: cardId,
+    cardData,
+    crucibleText: rendered.crucibleText,
+    scryfallText: rendered.scryfallText,
+    prompt: description,
+    explanation: llmResult.explanation,
+    suggestionArtwork: llmResult.suggestion_artwork,
+    suggestionMechanics: llmResult.suggestion_mechanics,
+    artEditMode: llmResult.art_edit_mode,
+    creatorId,
+    parentId: originalCardId,
+    createdDate: new Date().toISOString(),
+    isDeleted: false,
+    isFinished: true,
+    isSuperseded: false,
+    renderedS3Uris,
+  };
 }
 
 export async function applyFieldEdits(
   originalCardId: string,
   newCrucibleText: string,
   creatorId: string
-): Promise<CardRecord> {
+): Promise<CardDocument> {
   const original = await getCard(originalCardId);
   if (!original) throw new Error(`Card ${originalCardId} not found`);
 
   const cardId = uuid();
   const cardData = parseCard(newCrucibleText);
 
-  let artS3Uri = original.artS3Uri;
-  const oldArtDesc = original.cardData?.artDescription;
-  const newArtDesc = cardData.artDescription;
-
-  if (newArtDesc && newArtDesc !== oldArtDesc) {
-    const { width, height } = getArtDimensionsFromText(newCrucibleText);
-    artS3Uri = await generateArt(newArtDesc, width, height);
+  // TODO: handle art regeneration for edits
+  // For now, reuse original art if available
+  if (original.renderedS3Uris?.[0]) {
+    cardData.artUrl = await getPresignedUrl(original.renderedS3Uris[0]);
   }
 
-  cardData.artUrl = await getPresignedUrl(artS3Uri);
-  const { rendered, frontS3Uri, backS3Uri } = await renderAndUpload(cardData);
-  const sequenceNumber = await nextSequenceNumber();
+  const { rendered, renderedS3Uris } = await renderAndUpload(cardData);
 
-  const record: CardRecord = {
-    id: cardId,
+  const rows = flattenCardData(cardId, cardData, renderedS3Uris, {
     crucibleText: rendered.crucibleText,
-    cardData,
     scryfallText: rendered.scryfallText,
     prompt: original.prompt,
     explanation: original.explanation,
     suggestionArtwork: original.suggestionArtwork,
     suggestionMechanics: original.suggestionMechanics,
-    artS3Uri,
-    frontS3Uri,
-    backS3Uri,
     creatorId,
     parentId: originalCardId,
-    sequenceNumber,
-    dummyHashKey: 0,
     createdDate: new Date().toISOString(),
     isDeleted: false,
     isFinished: true,
     isSuperseded: false,
-  };
+  });
 
-  await putCard(record);
+  await putCardRows(rows);
   await markSuperseded(originalCardId);
-  return record;
+
+  return {
+    id: cardId,
+    cardData,
+    crucibleText: rendered.crucibleText,
+    scryfallText: rendered.scryfallText,
+    prompt: original.prompt,
+    explanation: original.explanation,
+    suggestionArtwork: original.suggestionArtwork,
+    suggestionMechanics: original.suggestionMechanics,
+    creatorId,
+    parentId: originalCardId,
+    createdDate: new Date().toISOString(),
+    isDeleted: false,
+    isFinished: true,
+    isSuperseded: false,
+    renderedS3Uris,
+  };
 }
