@@ -8,20 +8,25 @@ import type {
   FrameEffect,
   Supertype,
   Type,
-} from "@domainellipticlanguage/mtg-crucible";
+  Color,
+  LinkType,
+} from "@domainellipticlanguage/mtg-crucible/constants";
 import {
   CARD_TYPES,
   RARITIES,
   TEMPLATE_NAMES,
   FRAME_COLORS,
   FRAME_EFFECTS,
+  LINK_TYPES,
+  COLORS,
+  SUPERTYPES_LIST,
 } from "../types/card";
 
 // ---------------------------------------------------------------------------
-// Helpers (client-side only, no crucible runtime imports)
+// Helpers
 // ---------------------------------------------------------------------------
 
-const SUPERTYPES: Supertype[] = ["legendary", "basic", "snow", "world"];
+const SUPERTYPES = SUPERTYPES_LIST;
 
 function numberToRoman(n: number): string {
   switch (n) {
@@ -31,22 +36,42 @@ function numberToRoman(n: number): string {
   }
 }
 
+function romanToNumber(r: string): number {
+  const map: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
+  return map[r] ?? (parseInt(r, 10) || 1);
+}
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function formatList(items: string[]): string {
-  const cap = items.map(capitalize);
-  if (cap.length <= 1) return cap[0] ?? "";
-  if (cap.length === 2) return `${cap[0]} and ${cap[1]}`;
-  return cap.slice(0, -1).join(", ") + ", and " + cap[cap.length - 1];
+/** Infer which structured ability editor to show */
+type StructuredKind = "planeswalker" | "saga" | "class" | "leveler" | "case" | "prototype" | "mutate" | null;
+
+function detectStructuredKind(types: Type[], subtypes: string, template: TemplateName | ""): StructuredKind {
+  if (template === "planeswalker" || template === "planeswalker_tall" || types.includes("planeswalker")) return "planeswalker";
+  if (template === "saga") return "saga";
+  if (template === "class") return "class";
+  if (template === "leveler") return "leveler";
+  if (template === "prototype") return "prototype";
+  if (template === "mutate") return "mutate";
+  // Infer from subtypes
+  const st = subtypes.toLowerCase();
+  if (st.includes("saga")) return "saga";
+  if (st.includes("class")) return "class";
+  if (st.includes("case")) return "case";
+  return null;
 }
 
-/** Extract the plain abilities text from CardData.abilities */
+/** Does this link type need a linked card editor? */
+function linkTypeNeedsLinkedCard(lt: LinkType | ""): boolean {
+  return !!lt;
+}
+
+/** Extract plain abilities text from CardData.abilities */
 function extractAbilitiesText(abilities: CardData["abilities"]): string {
   if (!abilities) return "";
   if (typeof abilities === "string") return abilities;
-
   const parts: string[] = [];
   if (abilities.unstructuredAbilities?.length) {
     parts.push(abilities.unstructuredAbilities.join("\n"));
@@ -55,9 +80,7 @@ function extractAbilitiesText(abilities: CardData["abilities"]): string {
   if (sa) {
     switch (sa.kind) {
       case "planeswalker":
-        for (const a of sa.loyaltyAbilities) {
-          parts.push(a.cost ? `${a.cost}: ${a.text}` : a.text);
-        }
+        for (const a of sa.loyaltyAbilities) parts.push(a.cost ? `${a.cost}: ${a.text}` : a.text);
         break;
       case "saga":
         for (const ch of sa.chapters) {
@@ -86,112 +109,53 @@ function extractAbilitiesText(abilities: CardData["abilities"]): string {
       case "mutate":
         parts.push(`Mutate ${sa.mutateCost}`);
         break;
-      default:
-        break;
     }
   }
   return parts.join("\n");
-}
-
-/** Detect structured ability kind from types + text */
-type StructuredKind = "planeswalker" | "saga" | "class" | null;
-
-function detectStructuredKind(types: Type[], text: string): StructuredKind {
-  if (types.includes("planeswalker")) return "planeswalker";
-  // Check subtypes or explicit saga/class patterns
-  const lower = text.toLowerCase();
-  if (types.includes("enchantment")) {
-    // saga chapters use roman numerals
-    if (/^(I{1,3}|IV|V|VI)\s*[,\u2014]/m.test(text)) return "saga";
-    // class levels
-    if (/level\s+\d/i.test(lower)) return "class";
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
 // Structured ability sub-editors
 // ---------------------------------------------------------------------------
 
-interface PlaneswalkerAbility {
-  cost: string;
-  text: string;
-}
+// --- Planeswalker ---
+
+interface PlaneswalkerAbility { cost: string; text: string }
 
 function parsePlaneswalkerAbilities(text: string): PlaneswalkerAbility[] {
   if (!text.trim()) return [{ cost: "+1", text: "" }, { cost: "-2", text: "" }, { cost: "-6", text: "" }];
   return text.split("\n").filter(Boolean).map((line) => {
     const m = line.match(/^([+-]?\d+|0)\s*:\s*(.*)$/);
-    if (m) return { cost: m[1], text: m[2] };
-    return { cost: "", text: line };
+    return m ? { cost: m[1], text: m[2] } : { cost: "", text: line };
   });
 }
 
 function formatPlaneswalkerAbilities(abilities: PlaneswalkerAbility[]): string {
-  return abilities
-    .map((a) => (a.cost ? `${a.cost}: ${a.text}` : a.text))
-    .join("\n");
+  return abilities.map((a) => (a.cost ? `${a.cost}: ${a.text}` : a.text)).join("\n");
 }
 
-function PlaneswalkerEditor({
-  abilities,
-  onChange,
-}: {
-  abilities: PlaneswalkerAbility[];
-  onChange: (abilities: PlaneswalkerAbility[]) => void;
-}) {
-  const update = (index: number, field: "cost" | "text", value: string) => {
-    const next = [...abilities];
-    next[index] = { ...next[index], [field]: value };
-    onChange(next);
+function PlaneswalkerEditor({ abilities, onChange }: { abilities: PlaneswalkerAbility[]; onChange: (a: PlaneswalkerAbility[]) => void }) {
+  const update = (i: number, field: "cost" | "text", value: string) => {
+    const next = [...abilities]; next[i] = { ...next[i], [field]: value }; onChange(next);
   };
-  const add = () => onChange([...abilities, { cost: "0", text: "" }]);
-  const remove = (i: number) => onChange(abilities.filter((_, idx) => idx !== i));
-
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium text-neutral-400">Loyalty Abilities</label>
       {abilities.map((a, i) => (
         <div key={i} className="flex gap-2 items-start">
-          <input
-            className="input w-16 font-mono text-center"
-            value={a.cost}
-            onChange={(e) => update(i, "cost", e.target.value)}
-            placeholder="+1"
-          />
-          <input
-            className="input flex-1"
-            value={a.text}
-            onChange={(e) => update(i, "text", e.target.value)}
-            placeholder="Ability text"
-          />
-          <button
-            type="button"
-            onClick={() => remove(i)}
-            className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors"
-            title="Remove ability"
-          >
-            &times;
-          </button>
+          <input className="input w-16 font-mono text-center" value={a.cost} onChange={(e) => update(i, "cost", e.target.value)} placeholder="+1" />
+          <input className="input flex-1" value={a.text} onChange={(e) => update(i, "text", e.target.value)} placeholder="Ability text" />
+          <button type="button" onClick={() => onChange(abilities.filter((_, idx) => idx !== i))} className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors" title="Remove">&times;</button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={add}
-        className="text-sm text-gold-400 hover:text-gold-300 transition-colors"
-      >
-        + Add ability
-      </button>
+      <button type="button" onClick={() => onChange([...abilities, { cost: "0", text: "" }])} className="text-sm text-gold-400 hover:text-gold-300 transition-colors">+ Add ability</button>
     </div>
   );
 }
 
 // --- Saga ---
 
-interface SagaChapter {
-  chapterNumbers: number[];
-  text: string;
-}
+interface SagaChapter { chapterNumbers: number[]; text: string }
 
 function parseSagaChapters(text: string): SagaChapter[] {
   if (!text.trim()) return [{ chapterNumbers: [1], text: "" }, { chapterNumbers: [2], text: "" }, { chapterNumbers: [3], text: "" }];
@@ -199,8 +163,7 @@ function parseSagaChapters(text: string): SagaChapter[] {
   for (const line of text.split("\n").filter(Boolean)) {
     const m = line.match(/^((?:I{1,3}|IV|V|VI)(?:\s*,\s*(?:I{1,3}|IV|V|VI))*)\s*\u2014\s*(.*)$/);
     if (m) {
-      const nums = m[1].split(",").map((s) => romanToNumber(s.trim()));
-      chapters.push({ chapterNumbers: nums, text: m[2] });
+      chapters.push({ chapterNumbers: m[1].split(",").map((s) => romanToNumber(s.trim())), text: m[2] });
     } else {
       chapters.push({ chapterNumbers: [chapters.length + 1], text: line });
     }
@@ -208,82 +171,34 @@ function parseSagaChapters(text: string): SagaChapter[] {
   return chapters;
 }
 
-function romanToNumber(r: string): number {
-  const map: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
-  return map[r] ?? (parseInt(r, 10) || 1);
-}
-
 function formatSagaChapters(chapters: SagaChapter[]): string {
-  return chapters
-    .map((ch) => {
-      const nums = ch.chapterNumbers.map(numberToRoman).join(", ");
-      return `${nums} \u2014 ${ch.text}`;
-    })
-    .join("\n");
+  return chapters.map((ch) => `${ch.chapterNumbers.map(numberToRoman).join(", ")} \u2014 ${ch.text}`).join("\n");
 }
 
-function SagaEditor({
-  chapters,
-  onChange,
-}: {
-  chapters: SagaChapter[];
-  onChange: (chapters: SagaChapter[]) => void;
-}) {
-  const update = (index: number, text: string) => {
-    const next = [...chapters];
-    next[index] = { ...next[index], text };
-    onChange(next);
-  };
+function SagaEditor({ chapters, onChange }: { chapters: SagaChapter[]; onChange: (c: SagaChapter[]) => void }) {
+  const update = (i: number, text: string) => { const next = [...chapters]; next[i] = { ...next[i], text }; onChange(next); };
   const add = () => {
-    const nextNum = chapters.length > 0
-      ? Math.max(...chapters.flatMap((c) => c.chapterNumbers)) + 1
-      : 1;
+    const nextNum = chapters.length > 0 ? Math.max(...chapters.flatMap((c) => c.chapterNumbers)) + 1 : 1;
     onChange([...chapters, { chapterNumbers: [nextNum], text: "" }]);
   };
-  const remove = (i: number) => onChange(chapters.filter((_, idx) => idx !== i));
-
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium text-neutral-400">Saga Chapters</label>
       {chapters.map((ch, i) => (
         <div key={i} className="flex gap-2 items-start">
-          <span className="w-12 py-1.5 text-center text-gold-400 font-semibold text-sm shrink-0">
-            {ch.chapterNumbers.map(numberToRoman).join(", ")}
-          </span>
-          <input
-            className="input flex-1"
-            value={ch.text}
-            onChange={(e) => update(i, e.target.value)}
-            placeholder="Chapter effect"
-          />
-          <button
-            type="button"
-            onClick={() => remove(i)}
-            className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors"
-            title="Remove chapter"
-          >
-            &times;
-          </button>
+          <span className="w-12 py-1.5 text-center text-gold-400 font-semibold text-sm shrink-0">{ch.chapterNumbers.map(numberToRoman).join(", ")}</span>
+          <input className="input flex-1" value={ch.text} onChange={(e) => update(i, e.target.value)} placeholder="Chapter effect" />
+          <button type="button" onClick={() => onChange(chapters.filter((_, idx) => idx !== i))} className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors" title="Remove">&times;</button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={add}
-        className="text-sm text-gold-400 hover:text-gold-300 transition-colors"
-      >
-        + Add chapter
-      </button>
+      <button type="button" onClick={add} className="text-sm text-gold-400 hover:text-gold-300 transition-colors">+ Add chapter</button>
     </div>
   );
 }
 
 // --- Class ---
 
-interface ClassLevel {
-  level: number;
-  cost: string;
-  text: string;
-}
+interface ClassLevel { level: number; cost: string; text: string }
 
 function parseClassLevels(text: string): ClassLevel[] {
   if (!text.trim()) return [{ level: 1, cost: "", text: "" }, { level: 2, cost: "", text: "" }];
@@ -298,7 +213,6 @@ function parseClassLevels(text: string): ClassLevel[] {
     } else if (current) {
       current.text = current.text ? current.text + "\n" + line : line;
     } else {
-      // Text before any level header, treat as level 1 base text
       levels.push({ level: 1, cost: "", text: line });
     }
   }
@@ -315,24 +229,14 @@ function formatClassLevels(levels: ClassLevel[]): string {
   return parts.join("\n");
 }
 
-function ClassEditor({
-  levels,
-  onChange,
-}: {
-  levels: ClassLevel[];
-  onChange: (levels: ClassLevel[]) => void;
-}) {
-  const update = (index: number, field: keyof ClassLevel, value: string | number) => {
-    const next = [...levels];
-    next[index] = { ...next[index], [field]: value };
-    onChange(next);
+function ClassEditor({ levels, onChange }: { levels: ClassLevel[]; onChange: (l: ClassLevel[]) => void }) {
+  const update = (i: number, field: keyof ClassLevel, value: string | number) => {
+    const next = [...levels]; next[i] = { ...next[i], [field]: value }; onChange(next);
   };
   const add = () => {
     const nextLevel = levels.length > 0 ? Math.max(...levels.map((l) => l.level)) + 1 : 1;
     onChange([...levels, { level: nextLevel, cost: "", text: "" }]);
   };
-  const remove = (i: number) => onChange(levels.filter((_, idx) => idx !== i));
-
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-neutral-400">Class Levels</label>
@@ -340,43 +244,250 @@ function ClassEditor({
         <div key={i} className="space-y-1 p-2 border border-neutral-800 rounded-lg">
           <div className="flex gap-2 items-center">
             <span className="text-sm text-neutral-400 w-16 shrink-0">Level {lv.level}</span>
-            <input
-              className="input flex-1"
-              value={lv.cost}
-              onChange={(e) => update(i, "cost", e.target.value)}
-              placeholder="Mana cost (e.g. {1}{W})"
-            />
-            <button
-              type="button"
-              onClick={() => remove(i)}
-              className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors"
-              title="Remove level"
-            >
-              &times;
-            </button>
+            <input className="input flex-1" value={lv.cost} onChange={(e) => update(i, "cost", e.target.value)} placeholder="Mana cost (e.g. {1}{W})" />
+            <button type="button" onClick={() => onChange(levels.filter((_, idx) => idx !== i))} className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors" title="Remove">&times;</button>
           </div>
-          <textarea
-            className="input w-full resize-none"
-            rows={2}
-            value={lv.text}
-            onChange={(e) => update(i, "text", e.target.value)}
-            placeholder="Level effect text"
-          />
+          <textarea className="input w-full resize-none" rows={2} value={lv.text} onChange={(e) => update(i, "text", e.target.value)} placeholder="Level effect text" />
         </div>
       ))}
-      <button
-        type="button"
-        onClick={add}
-        className="text-sm text-gold-400 hover:text-gold-300 transition-colors"
-      >
-        + Add level
-      </button>
+      <button type="button" onClick={add} className="text-sm text-gold-400 hover:text-gold-300 transition-colors">+ Add level</button>
+    </div>
+  );
+}
+
+// --- Leveler ---
+
+interface LevelerLevel { levelLo: string; levelHi: string; rulesText: string; power: string; toughness: string }
+
+function parseLevelerLevels(text: string): LevelerLevel[] {
+  if (!text.trim()) return [
+    { levelLo: "1", levelHi: "2", rulesText: "", power: "", toughness: "" },
+    { levelLo: "3", levelHi: "5", rulesText: "", power: "", toughness: "" },
+  ];
+  const levels: LevelerLevel[] = [];
+  for (const line of text.split("\n").filter(Boolean)) {
+    const m = line.match(/^Level\s+(\d+)-(\d+):\s*(.*?)\s*\((\S+)\/(\S+)\)\s*$/i);
+    if (m) {
+      levels.push({ levelLo: m[1], levelHi: m[2], rulesText: m[3], power: m[4], toughness: m[5] });
+    } else {
+      levels.push({ levelLo: "", levelHi: "", rulesText: line, power: "", toughness: "" });
+    }
+  }
+  return levels;
+}
+
+function formatLevelerLevels(levels: LevelerLevel[]): string {
+  return levels.map((lv) => {
+    if (lv.levelLo && lv.levelHi) {
+      return `Level ${lv.levelLo}-${lv.levelHi}: ${lv.rulesText} (${lv.power}/${lv.toughness})`;
+    }
+    return lv.rulesText;
+  }).join("\n");
+}
+
+function LevelerEditor({ levels, onChange }: { levels: LevelerLevel[]; onChange: (l: LevelerLevel[]) => void }) {
+  const update = (i: number, field: keyof LevelerLevel, value: string) => {
+    const next = [...levels]; next[i] = { ...next[i], [field]: value }; onChange(next);
+  };
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-neutral-400">Leveler Levels</label>
+      {levels.map((lv, i) => (
+        <div key={i} className="p-2 border border-neutral-800 rounded-lg space-y-1">
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-neutral-400 shrink-0">Level</span>
+            <input className="input w-14 text-center" value={lv.levelLo} onChange={(e) => update(i, "levelLo", e.target.value)} placeholder="1" />
+            <span className="text-neutral-500">-</span>
+            <input className="input w-14 text-center" value={lv.levelHi} onChange={(e) => update(i, "levelHi", e.target.value)} placeholder="2" />
+            <input className="input w-14 text-center" value={lv.power} onChange={(e) => update(i, "power", e.target.value)} placeholder="P" />
+            <span className="text-neutral-500">/</span>
+            <input className="input w-14 text-center" value={lv.toughness} onChange={(e) => update(i, "toughness", e.target.value)} placeholder="T" />
+            <button type="button" onClick={() => onChange(levels.filter((_, idx) => idx !== i))} className="px-2 py-1.5 text-neutral-500 hover:text-red-400 transition-colors" title="Remove">&times;</button>
+          </div>
+          <input className="input w-full" value={lv.rulesText} onChange={(e) => update(i, "rulesText", e.target.value)} placeholder="Rules text" />
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...levels, { levelLo: "", levelHi: "", rulesText: "", power: "", toughness: "" }])} className="text-sm text-gold-400 hover:text-gold-300 transition-colors">+ Add level</button>
+    </div>
+  );
+}
+
+// --- Case ---
+
+interface CaseState { toSolve: string; solved: string }
+
+function parseCaseState(text: string): CaseState {
+  const toSolveM = text.match(/To solve:\s*(.*)/i);
+  const solvedM = text.match(/Solved:\s*(.*)/i);
+  return { toSolve: toSolveM?.[1] ?? "", solved: solvedM?.[1] ?? "" };
+}
+
+function formatCaseState(c: CaseState): string {
+  const parts: string[] = [];
+  if (c.toSolve) parts.push(`To solve: ${c.toSolve}`);
+  if (c.solved) parts.push(`Solved: ${c.solved}`);
+  return parts.join("\n");
+}
+
+function CaseEditor({ state, onChange }: { state: CaseState; onChange: (s: CaseState) => void }) {
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-neutral-400">Case Conditions</label>
+      <div>
+        <label className="block text-xs text-neutral-500 mb-1">To Solve</label>
+        <textarea className="input w-full resize-none" rows={2} value={state.toSolve} onChange={(e) => onChange({ ...state, toSolve: e.target.value })} placeholder="Condition to solve this case" />
+      </div>
+      <div>
+        <label className="block text-xs text-neutral-500 mb-1">Solved</label>
+        <textarea className="input w-full resize-none" rows={2} value={state.solved} onChange={(e) => onChange({ ...state, solved: e.target.value })} placeholder="Effect when solved" />
+      </div>
+    </div>
+  );
+}
+
+// --- Prototype ---
+
+interface PrototypeState { manaCost: string; power: string; toughness: string }
+
+function parsePrototypeState(text: string): PrototypeState {
+  const m = text.match(/Prototype\s+(\S+)\s*\u2014\s*(\S+)\/(\S+)/);
+  return m ? { manaCost: m[1], power: m[2], toughness: m[3] } : { manaCost: "", power: "", toughness: "" };
+}
+
+function formatPrototypeState(p: PrototypeState): string {
+  if (!p.manaCost) return "";
+  return `Prototype ${p.manaCost} \u2014 ${p.power}/${p.toughness}`;
+}
+
+function PrototypeEditor({ state, onChange }: { state: PrototypeState; onChange: (s: PrototypeState) => void }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-neutral-400">Prototype</label>
+      <div className="flex gap-2 items-center">
+        <input className="input flex-1 font-mono" value={state.manaCost} onChange={(e) => onChange({ ...state, manaCost: e.target.value })} placeholder="Mana cost (e.g. {1}{R})" />
+        <input className="input w-16 text-center" value={state.power} onChange={(e) => onChange({ ...state, power: e.target.value })} placeholder="P" />
+        <span className="text-neutral-500">/</span>
+        <input className="input w-16 text-center" value={state.toughness} onChange={(e) => onChange({ ...state, toughness: e.target.value })} placeholder="T" />
+      </div>
+    </div>
+  );
+}
+
+// --- Mutate ---
+
+function MutateEditor({ cost, onChange }: { cost: string; onChange: (c: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-neutral-400">Mutate Cost</label>
+      <input className="input font-mono" value={cost} onChange={(e) => onChange(e.target.value)} placeholder="{1}{G}{G}" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Build crucible text (client-side string concatenation)
+// Linked Card Editor (one level of nesting)
+// ---------------------------------------------------------------------------
+
+interface LinkedFormState {
+  name: string;
+  manaCost: string;
+  types: Type[];
+  subtypes: string;
+  abilitiesText: string;
+  power: string;
+  toughness: string;
+  startingLoyalty: string;
+  battleDefense: string;
+  flavorText: string;
+  artDescription: string;
+}
+
+function initLinkedForm(cd?: CardData): LinkedFormState {
+  return {
+    name: cd?.name ?? "",
+    manaCost: cd?.manaCost ?? "",
+    types: cd?.types ?? [],
+    subtypes: (cd?.subtypes ?? []).join(" "),
+    abilitiesText: extractAbilitiesText(cd?.abilities),
+    power: cd?.power ?? "",
+    toughness: cd?.toughness ?? "",
+    startingLoyalty: cd?.startingLoyalty ?? "",
+    battleDefense: cd?.battleDefense ?? "",
+    flavorText: cd?.flavorText ?? "",
+    artDescription: cd?.artDescription ?? "",
+  };
+}
+
+function LinkedCardEditor({ form, onChange, loading }: { form: LinkedFormState; onChange: (f: LinkedFormState) => void; loading: boolean }) {
+  const setField = <K extends keyof LinkedFormState>(key: K, value: LinkedFormState[K]) => onChange({ ...form, [key]: value });
+  const toggleType = (t: Type) => {
+    const types = form.types.includes(t) ? form.types.filter((x) => x !== t) : [...form.types, t];
+    onChange({ ...form, types });
+  };
+
+  return (
+    <div className="space-y-4 p-3 border border-neutral-700 rounded-lg bg-neutral-900/50">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Name</label>
+          <input className="input" value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Back face name" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Mana Cost</label>
+          <input className="input font-mono" value={form.manaCost} onChange={(e) => setField("manaCost", e.target.value)} placeholder="{2}{R}" disabled={loading} />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-neutral-400 mb-1">Types</label>
+        <div className="flex flex-wrap gap-1.5">
+          {CARD_TYPES.map((t) => (
+            <button key={t} type="button" onClick={() => toggleType(t as Type)} disabled={loading}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${form.types.includes(t as Type) ? "bg-gold-500 text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"}`}>
+              {capitalize(t)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-neutral-400 mb-1">Subtypes</label>
+        <input className="input" value={form.subtypes} onChange={(e) => setField("subtypes", e.target.value)} placeholder="Human Wizard" disabled={loading} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-neutral-400 mb-1">Abilities</label>
+        <textarea className="input w-full resize-none" rows={3} value={form.abilitiesText} onChange={(e) => setField("abilitiesText", e.target.value)} placeholder="Card abilities" disabled={loading} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Power</label>
+          <input className="input" value={form.power} onChange={(e) => setField("power", e.target.value)} disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Toughness</label>
+          <input className="input" value={form.toughness} onChange={(e) => setField("toughness", e.target.value)} disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Loyalty</label>
+          <input className="input" value={form.startingLoyalty} onChange={(e) => setField("startingLoyalty", e.target.value)} disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Defense</label>
+          <input className="input" value={form.battleDefense} onChange={(e) => setField("battleDefense", e.target.value)} disabled={loading} />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-neutral-400 mb-1">Flavor Text</label>
+        <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} disabled={loading} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-neutral-400 mb-1">Art Description</label>
+        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} disabled={loading} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Build crucible text (client-side)
 // ---------------------------------------------------------------------------
 
 interface FormState {
@@ -393,14 +504,27 @@ interface FormState {
   battleDefense: string;
   flavorText: string;
   artDescription: string;
+  artUrl: string;
   // Visual overrides
   cardTemplate: TemplateName | "";
   frameColor: FrameColor | "";
   accentColor: AccentColor | "";
   frameEffect: FrameEffect | "";
+  colorIndicator: Color[];
+  legendCrown: boolean | "";
+  nameLineColor: FrameColor | "";
+  typeLineColor: FrameColor | "";
+  ptBoxColor: FrameColor | "";
+  // Link
+  linkType: LinkType | "";
+  // Metadata
+  artist: string;
+  setCode: string;
+  collectorNumber: string;
+  designer: string;
 }
 
-function buildCrucibleText(form: FormState): string {
+function buildCrucibleText(form: FormState, linkedForm?: LinkedFormState): string {
   const lines: string[] = [];
 
   // Line 1: Name {ManaCost}
@@ -410,26 +534,34 @@ function buildCrucibleText(form: FormState): string {
 
   // Metadata
   if (form.artDescription) lines.push(`Art Description: ${form.artDescription}`);
+  if (form.artUrl) lines.push(`Art URL: ${form.artUrl}`);
   if (form.rarity) lines.push(`Rarity: ${form.rarity}`);
   if (form.accentColor) lines.push(`Accent: ${capitalize(form.accentColor)}`);
   if (form.frameColor) lines.push(`Frame Color: ${capitalize(form.frameColor)}`);
   if (form.frameEffect && form.frameEffect !== "normal") lines.push(`Frame Effect: ${capitalize(form.frameEffect)}`);
+  if (form.colorIndicator.length > 0) lines.push(`Color Indicator: ${form.colorIndicator.map(capitalize).join(", ")}`);
+  if (form.legendCrown === true) lines.push(`Legend Crown: yes`);
+  if (form.legendCrown === false) lines.push(`Legend Crown: no`);
+  if (form.nameLineColor) lines.push(`Name Line Color: ${capitalize(form.nameLineColor)}`);
+  if (form.typeLineColor) lines.push(`Type Line Color: ${capitalize(form.typeLineColor)}`);
+  if (form.ptBoxColor) lines.push(`PT Box Color: ${capitalize(form.ptBoxColor)}`);
+  if (form.cardTemplate) lines.push(`Template: ${form.cardTemplate}`);
+  if (form.artist) lines.push(`Artist: ${form.artist}`);
+  if (form.setCode) lines.push(`Set: ${form.setCode}`);
+  if (form.collectorNumber) lines.push(`Collector Number: ${form.collectorNumber}`);
+  if (form.designer) lines.push(`Designer: ${form.designer}`);
+  if (form.linkType) lines.push(`Link: ${form.linkType}`);
 
   // Type line
   const typeParts: string[] = [];
   for (const st of form.supertypes) typeParts.push(capitalize(st));
   for (const t of form.types) typeParts.push(capitalize(t));
   let typeLine = typeParts.join(" ");
-  const subtypesList = form.subtypes
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (subtypesList.length > 0) {
-    typeLine += " \u2014 " + subtypesList.join(" ");
-  }
+  const subtypesList = form.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  if (subtypesList.length > 0) typeLine += " \u2014 " + subtypesList.join(" ");
   lines.push(typeLine);
 
-  // Loyalty / Defense (before abilities for pw/battle)
+  // Loyalty / Defense
   if (form.startingLoyalty) lines.push(`Loyalty: ${form.startingLoyalty}`);
   if (form.battleDefense) lines.push(`Defense: ${form.battleDefense}`);
 
@@ -437,14 +569,32 @@ function buildCrucibleText(form: FormState): string {
   if (form.abilitiesText.trim()) lines.push(form.abilitiesText.trim());
 
   // P/T
-  if (form.power && form.toughness) {
-    lines.push(`${form.power}/${form.toughness}`);
-  }
+  if (form.power && form.toughness) lines.push(`${form.power}/${form.toughness}`);
 
   // Flavor text
   if (form.flavorText) {
-    for (const fl of form.flavorText.split("\n")) {
-      lines.push(`Flavor Text: ${fl}`);
+    for (const fl of form.flavorText.split("\n")) lines.push(`Flavor Text: ${fl}`);
+  }
+
+  // Linked card
+  if (linkedForm && form.linkType) {
+    lines.push("---");
+    let backName = linkedForm.name || "Untitled";
+    if (linkedForm.manaCost) backName += ` ${linkedForm.manaCost}`;
+    lines.push(backName);
+    if (linkedForm.artDescription) lines.push(`Art Description: ${linkedForm.artDescription}`);
+    const backTypeParts: string[] = [];
+    for (const t of linkedForm.types) backTypeParts.push(capitalize(t));
+    let backTypeLine = backTypeParts.join(" ");
+    const backSubtypes = linkedForm.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+    if (backSubtypes.length > 0) backTypeLine += " \u2014 " + backSubtypes.join(" ");
+    if (backTypeLine) lines.push(backTypeLine);
+    if (linkedForm.startingLoyalty) lines.push(`Loyalty: ${linkedForm.startingLoyalty}`);
+    if (linkedForm.battleDefense) lines.push(`Defense: ${linkedForm.battleDefense}`);
+    if (linkedForm.abilitiesText.trim()) lines.push(linkedForm.abilitiesText.trim());
+    if (linkedForm.power && linkedForm.toughness) lines.push(`${linkedForm.power}/${linkedForm.toughness}`);
+    if (linkedForm.flavorText) {
+      for (const fl of linkedForm.flavorText.split("\n")) lines.push(`Flavor Text: ${fl}`);
     }
   }
 
@@ -462,12 +612,7 @@ interface CardEditFormProps {
   loading: boolean;
 }
 
-export function CardEditForm({
-  initialCardData,
-  initialCrucibleText,
-  onSave,
-  loading,
-}: CardEditFormProps) {
+export function CardEditForm({ initialCardData, initialCrucibleText, onSave, loading }: CardEditFormProps) {
   const cd = initialCardData;
 
   const [form, setForm] = useState<FormState>(() => ({
@@ -484,17 +629,30 @@ export function CardEditForm({
     battleDefense: cd.battleDefense ?? "",
     flavorText: cd.flavorText ?? "",
     artDescription: cd.artDescription ?? "",
+    artUrl: cd.artUrl ?? "",
     cardTemplate: cd.cardTemplate ?? "",
     frameColor: (Array.isArray(cd.frameColor) ? cd.frameColor[0] : cd.frameColor) ?? "",
     accentColor: (Array.isArray(cd.accentColor) ? cd.accentColor[0] : cd.accentColor) ?? "",
     frameEffect: (Array.isArray(cd.frameEffect) ? cd.frameEffect[0] : cd.frameEffect) ?? "",
+    colorIndicator: cd.colorIndicator ?? [],
+    legendCrown: cd.legendCrown ?? "",
+    nameLineColor: (Array.isArray(cd.nameLineColor) ? cd.nameLineColor[0] : cd.nameLineColor) ?? "",
+    typeLineColor: (Array.isArray(cd.typeLineColor) ? cd.typeLineColor[0] : cd.typeLineColor) ?? "",
+    ptBoxColor: (Array.isArray(cd.ptBoxColor) ? cd.ptBoxColor[0] : cd.ptBoxColor) ?? "",
+    linkType: cd.linkType ?? "",
+    artist: cd.artist ?? "",
+    setCode: cd.setCode ?? "",
+    collectorNumber: cd.collectorNumber ?? "",
+    designer: cd.designer ?? "",
   }));
+
+  const [linkedForm, setLinkedForm] = useState<LinkedFormState>(() => initLinkedForm(cd.linkedCard));
 
   // Structured editor state
   const [useStructuredEditor, setUseStructuredEditor] = useState(false);
   const structuredKind = useMemo(
-    () => detectStructuredKind(form.types, form.abilitiesText),
-    [form.types, form.abilitiesText],
+    () => detectStructuredKind(form.types, form.subtypes, form.cardTemplate),
+    [form.types, form.subtypes, form.cardTemplate],
   );
 
   const [pwAbilities, setPwAbilities] = useState<PlaneswalkerAbility[]>(() =>
@@ -506,6 +664,20 @@ export function CardEditForm({
   const [classLevels, setClassLevels] = useState<ClassLevel[]>(() =>
     parseClassLevels(structuredKind === "class" ? form.abilitiesText : ""),
   );
+  const [levelerLevels, setLevelerLevels] = useState<LevelerLevel[]>(() =>
+    parseLevelerLevels(structuredKind === "leveler" ? form.abilitiesText : ""),
+  );
+  const [caseState, setCaseState] = useState<CaseState>(() =>
+    parseCaseState(structuredKind === "case" ? form.abilitiesText : ""),
+  );
+  const [prototypeState, setPrototypeState] = useState<PrototypeState>(() =>
+    parsePrototypeState(structuredKind === "prototype" ? form.abilitiesText : ""),
+  );
+  const [mutateCost, setMutateCost] = useState(() => {
+    if (structuredKind !== "mutate") return "";
+    const m = form.abilitiesText.match(/Mutate\s+(.+)/i);
+    return m?.[1] ?? "";
+  });
 
   // Sync structured editors -> abilitiesText
   const updateAbilitiesFromStructured = useCallback(
@@ -513,39 +685,37 @@ export function CardEditForm({
       if (!kind || !useStructuredEditor) return;
       let text = "";
       switch (kind) {
-        case "planeswalker":
-          text = formatPlaneswalkerAbilities(pwAbilities);
-          break;
-        case "saga":
-          text = formatSagaChapters(sagaChapters);
-          break;
-        case "class":
-          text = formatClassLevels(classLevels);
-          break;
+        case "planeswalker": text = formatPlaneswalkerAbilities(pwAbilities); break;
+        case "saga": text = formatSagaChapters(sagaChapters); break;
+        case "class": text = formatClassLevels(classLevels); break;
+        case "leveler": text = formatLevelerLevels(levelerLevels); break;
+        case "case": text = formatCaseState(caseState); break;
+        case "prototype": text = formatPrototypeState(prototypeState); break;
+        case "mutate": text = mutateCost ? `Mutate ${mutateCost}` : ""; break;
       }
       setForm((f) => ({ ...f, abilitiesText: text }));
     },
-    [useStructuredEditor, pwAbilities, sagaChapters, classLevels],
+    [useStructuredEditor, pwAbilities, sagaChapters, classLevels, levelerLevels, caseState, prototypeState, mutateCost],
   );
 
   useEffect(() => {
     updateAbilitiesFromStructured(structuredKind);
   }, [updateAbilitiesFromStructured, structuredKind]);
 
-  // Re-parse structured data when switching to structured mode
   const toggleStructuredEditor = useCallback(() => {
     if (!useStructuredEditor && structuredKind) {
-      // Entering structured mode: parse current text
       switch (structuredKind) {
-        case "planeswalker":
-          setPwAbilities(parsePlaneswalkerAbilities(form.abilitiesText));
+        case "planeswalker": setPwAbilities(parsePlaneswalkerAbilities(form.abilitiesText)); break;
+        case "saga": setSagaChapters(parseSagaChapters(form.abilitiesText)); break;
+        case "class": setClassLevels(parseClassLevels(form.abilitiesText)); break;
+        case "leveler": setLevelerLevels(parseLevelerLevels(form.abilitiesText)); break;
+        case "case": setCaseState(parseCaseState(form.abilitiesText)); break;
+        case "prototype": setPrototypeState(parsePrototypeState(form.abilitiesText)); break;
+        case "mutate": {
+          const m = form.abilitiesText.match(/Mutate\s+(.+)/i);
+          setMutateCost(m?.[1] ?? "");
           break;
-        case "saga":
-          setSagaChapters(parseSagaChapters(form.abilitiesText));
-          break;
-        case "class":
-          setClassLevels(parseClassLevels(form.abilitiesText));
-          break;
+        }
       }
     }
     setUseStructuredEditor((v) => !v);
@@ -558,27 +728,40 @@ export function CardEditForm({
   const toggleSupertype = (st: Supertype) => {
     setForm((f) => ({
       ...f,
-      supertypes: f.supertypes.includes(st)
-        ? f.supertypes.filter((s) => s !== st)
-        : [...f.supertypes, st],
+      supertypes: f.supertypes.includes(st) ? f.supertypes.filter((s) => s !== st) : [...f.supertypes, st],
     }));
   };
 
   const toggleType = (t: Type) => {
     setForm((f) => ({
       ...f,
-      types: f.types.includes(t)
-        ? f.types.filter((x) => x !== t)
-        : [...f.types, t],
+      types: f.types.includes(t) ? f.types.filter((x) => x !== t) : [...f.types, t],
     }));
   };
 
-  const crucibleText = useMemo(() => buildCrucibleText(form), [form]);
+  const toggleColorIndicator = (c: Color) => {
+    setForm((f) => ({
+      ...f,
+      colorIndicator: f.colorIndicator.includes(c) ? f.colorIndicator.filter((x) => x !== c) : [...f.colorIndicator, c],
+    }));
+  };
+
+  const hasLinkedCard = linkTypeNeedsLinkedCard(form.linkType);
+
+  const crucibleText = useMemo(
+    () => buildCrucibleText(form, hasLinkedCard ? linkedForm : undefined),
+    [form, linkedForm, hasLinkedCard],
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loading) onSave(crucibleText);
   };
+
+  // Show P/T if creature type selected
+  const showPT = form.types.includes("creature");
+  const showLoyalty = form.types.includes("planeswalker") || structuredKind === "planeswalker";
+  const showDefense = form.types.includes("battle");
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -586,23 +769,11 @@ export function CardEditForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-neutral-300 mb-1">Name</label>
-          <input
-            className="input"
-            value={form.name}
-            onChange={(e) => setField("name", e.target.value)}
-            placeholder="Card Name"
-            disabled={loading}
-          />
+          <input className="input" value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Card Name" disabled={loading} />
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-300 mb-1">Mana Cost</label>
-          <input
-            className="input font-mono"
-            value={form.manaCost}
-            onChange={(e) => setField("manaCost", e.target.value)}
-            placeholder="{2}{U}{R}"
-            disabled={loading}
-          />
+          <input className="input font-mono" value={form.manaCost} onChange={(e) => setField("manaCost", e.target.value)} placeholder="{2}{U}{R}" disabled={loading} />
         </div>
       </div>
 
@@ -611,17 +782,8 @@ export function CardEditForm({
         <label className="block text-sm font-medium text-neutral-300 mb-1">Supertypes</label>
         <div className="flex flex-wrap gap-2">
           {SUPERTYPES.map((st) => (
-            <button
-              key={st}
-              type="button"
-              onClick={() => toggleSupertype(st)}
-              disabled={loading}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                form.supertypes.includes(st)
-                  ? "bg-gold-500 text-neutral-950 font-semibold"
-                  : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
-              }`}
-            >
+            <button key={st} type="button" onClick={() => toggleSupertype(st)} disabled={loading}
+              className={`px-3 py-1 rounded text-sm transition-colors ${form.supertypes.includes(st) ? "bg-gold-500 text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"}`}>
               {capitalize(st)}
             </button>
           ))}
@@ -633,17 +795,8 @@ export function CardEditForm({
         <label className="block text-sm font-medium text-neutral-300 mb-1">Types</label>
         <div className="flex flex-wrap gap-2">
           {CARD_TYPES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => toggleType(t as Type)}
-              disabled={loading}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                form.types.includes(t as Type)
-                  ? "bg-gold-500 text-neutral-950 font-semibold"
-                  : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
-              }`}
-            >
+            <button key={t} type="button" onClick={() => toggleType(t as Type)} disabled={loading}
+              className={`px-3 py-1 rounded text-sm transition-colors ${form.types.includes(t as Type) ? "bg-gold-500 text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"}`}>
               {capitalize(t)}
             </button>
           ))}
@@ -653,30 +806,24 @@ export function CardEditForm({
       {/* Subtypes */}
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Subtypes</label>
-        <input
-          className="input"
-          value={form.subtypes}
-          onChange={(e) => setField("subtypes", e.target.value)}
-          placeholder="Human Wizard"
-          disabled={loading}
-        />
+        <input className="input" value={form.subtypes} onChange={(e) => setField("subtypes", e.target.value)} placeholder="Human Wizard" disabled={loading} />
       </div>
 
-      {/* Rarity */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300 mb-1">Rarity</label>
-        <select
-          className="input"
-          value={form.rarity}
-          onChange={(e) => setField("rarity", e.target.value as Rarity)}
-          disabled={loading}
-        >
-          {RARITIES.map((r) => (
-            <option key={r} value={r}>
-              {capitalize(r)}
-            </option>
-          ))}
-        </select>
+      {/* Template & Rarity */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-neutral-300 mb-1">Card Template</label>
+          <select className="input" value={form.cardTemplate} onChange={(e) => setField("cardTemplate", e.target.value as TemplateName | "")} disabled={loading}>
+            <option value="">Auto-detect</option>
+            {TEMPLATE_NAMES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-300 mb-1">Rarity</label>
+          <select className="input" value={form.rarity} onChange={(e) => setField("rarity", e.target.value as Rarity)} disabled={loading}>
+            {RARITIES.map((r) => <option key={r} value={r}>{capitalize(r)}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Abilities */}
@@ -684,12 +831,8 @@ export function CardEditForm({
         <div className="flex items-center justify-between mb-1">
           <label className="block text-sm font-medium text-neutral-300">Abilities</label>
           {structuredKind && (
-            <button
-              type="button"
-              onClick={toggleStructuredEditor}
-              className="text-xs text-gold-400 hover:text-gold-300 transition-colors"
-            >
-              {useStructuredEditor ? "Switch to text editor" : "Switch to structured editor"}
+            <button type="button" onClick={toggleStructuredEditor} className="text-xs text-gold-400 hover:text-gold-300 transition-colors">
+              {useStructuredEditor ? "Switch to text editor" : `Switch to ${structuredKind} editor`}
             </button>
           )}
         </div>
@@ -700,89 +843,85 @@ export function CardEditForm({
           <SagaEditor chapters={sagaChapters} onChange={setSagaChapters} />
         ) : useStructuredEditor && structuredKind === "class" ? (
           <ClassEditor levels={classLevels} onChange={setClassLevels} />
+        ) : useStructuredEditor && structuredKind === "leveler" ? (
+          <LevelerEditor levels={levelerLevels} onChange={setLevelerLevels} />
+        ) : useStructuredEditor && structuredKind === "case" ? (
+          <CaseEditor state={caseState} onChange={setCaseState} />
+        ) : useStructuredEditor && structuredKind === "prototype" ? (
+          <PrototypeEditor state={prototypeState} onChange={setPrototypeState} />
+        ) : useStructuredEditor && structuredKind === "mutate" ? (
+          <MutateEditor cost={mutateCost} onChange={setMutateCost} />
         ) : (
-          <textarea
-            className="input w-full resize-none"
-            rows={5}
-            value={form.abilitiesText}
-            onChange={(e) => setField("abilitiesText", e.target.value)}
-            placeholder="Card abilities text (one ability per line)"
-            disabled={loading}
-          />
+          <textarea className="input w-full resize-none" rows={5} value={form.abilitiesText} onChange={(e) => setField("abilitiesText", e.target.value)} placeholder="Card abilities text (one ability per line)" disabled={loading} />
         )}
       </div>
 
-      {/* Power / Toughness / Loyalty / Defense */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Power</label>
-          <input
-            className="input"
-            value={form.power}
-            onChange={(e) => setField("power", e.target.value)}
-            placeholder="*"
-            disabled={loading}
-          />
+      {/* Stats: P/T, Loyalty, Defense — show contextually */}
+      {(showPT || showLoyalty || showDefense) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {showPT && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-neutral-300 mb-1">Power</label>
+                <input className="input" value={form.power} onChange={(e) => setField("power", e.target.value)} placeholder="*" disabled={loading} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-300 mb-1">Toughness</label>
+                <input className="input" value={form.toughness} onChange={(e) => setField("toughness", e.target.value)} placeholder="*" disabled={loading} />
+              </div>
+            </>
+          )}
+          {showLoyalty && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Starting Loyalty</label>
+              <input className="input" value={form.startingLoyalty} onChange={(e) => setField("startingLoyalty", e.target.value)} placeholder="4" disabled={loading} />
+            </div>
+          )}
+          {showDefense && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Defense</label>
+              <input className="input" value={form.battleDefense} onChange={(e) => setField("battleDefense", e.target.value)} placeholder="5" disabled={loading} />
+            </div>
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Toughness</label>
-          <input
-            className="input"
-            value={form.toughness}
-            onChange={(e) => setField("toughness", e.target.value)}
-            placeholder="*"
-            disabled={loading}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Loyalty</label>
-          <input
-            className="input"
-            value={form.startingLoyalty}
-            onChange={(e) => setField("startingLoyalty", e.target.value)}
-            placeholder="4"
-            disabled={loading}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Defense</label>
-          <input
-            className="input"
-            value={form.battleDefense}
-            onChange={(e) => setField("battleDefense", e.target.value)}
-            placeholder="5"
-            disabled={loading}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Flavor Text */}
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Flavor Text</label>
-        <textarea
-          className="input w-full resize-none"
-          rows={2}
-          value={form.flavorText}
-          onChange={(e) => setField("flavorText", e.target.value)}
-          placeholder="Italic flavor text..."
-          disabled={loading}
-        />
+        <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} placeholder="Italic flavor text..." disabled={loading} />
       </div>
 
-      {/* Art Description */}
+      {/* Art Description & URL */}
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
-        <textarea
-          className="input w-full resize-none"
-          rows={2}
-          value={form.artDescription}
-          onChange={(e) => setField("artDescription", e.target.value)}
-          placeholder="Describe the card art..."
-          disabled={loading}
-        />
+        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Art URL</label>
+        <input className="input" value={form.artUrl} onChange={(e) => setField("artUrl", e.target.value)} placeholder="https://..." disabled={loading} />
       </div>
 
-      {/* Visual Overrides (collapsible) */}
+      {/* Linked Card */}
+      <details className="border border-neutral-800 rounded-lg" open={hasLinkedCard}>
+        <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
+          Linked Card {form.linkType ? `(${form.linkType})` : ""}
+        </summary>
+        <div className="px-4 pb-4 pt-2 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-neutral-300 mb-1">Link Type</label>
+            <select className="input" value={form.linkType} onChange={(e) => setField("linkType", e.target.value as LinkType | "")} disabled={loading}>
+              <option value="">None</option>
+              {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{lt}</option>)}
+            </select>
+          </div>
+          {hasLinkedCard && (
+            <LinkedCardEditor form={linkedForm} onChange={setLinkedForm} loading={loading} />
+          )}
+        </div>
+      </details>
+
+      {/* Visual Overrides */}
       <details className="border border-neutral-800 rounded-lg">
         <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
           Visual Overrides
@@ -790,74 +929,100 @@ export function CardEditForm({
         <div className="px-4 pb-4 pt-2 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-1">Card Template</label>
-              <select
-                className="input"
-                value={form.cardTemplate}
-                onChange={(e) => setField("cardTemplate", e.target.value as TemplateName | "")}
-                disabled={loading}
-              >
-                <option value="">Auto-detect</option>
-                {TEMPLATE_NAMES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
               <label className="block text-sm font-medium text-neutral-300 mb-1">Frame Color</label>
-              <select
-                className="input"
-                value={form.frameColor}
-                onChange={(e) => setField("frameColor", e.target.value as FrameColor | "")}
-                disabled={loading}
-              >
+              <select className="input" value={form.frameColor} onChange={(e) => setField("frameColor", e.target.value as FrameColor | "")} disabled={loading}>
                 <option value="">Auto-detect</option>
-                {FRAME_COLORS.map((c) => (
-                  <option key={c} value={c}>
-                    {capitalize(c)}
-                  </option>
-                ))}
+                {FRAME_COLORS.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-1">Accent Color</label>
-              <select
-                className="input"
-                value={form.accentColor}
-                onChange={(e) => setField("accentColor", e.target.value as AccentColor | "")}
-                disabled={loading}
-              >
+              <select className="input" value={form.accentColor} onChange={(e) => setField("accentColor", e.target.value as AccentColor | "")} disabled={loading}>
                 <option value="">None</option>
-                {FRAME_COLORS.map((c) => (
-                  <option key={c} value={c}>
-                    {capitalize(c)}
-                  </option>
-                ))}
+                {FRAME_COLORS.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-1">Frame Effect</label>
-              <select
-                className="input"
-                value={form.frameEffect}
-                onChange={(e) => setField("frameEffect", e.target.value as FrameEffect | "")}
-                disabled={loading}
-              >
+              <select className="input" value={form.frameEffect} onChange={(e) => setField("frameEffect", e.target.value as FrameEffect | "")} disabled={loading}>
                 <option value="">Normal</option>
-                {FRAME_EFFECTS.map((f) => (
-                  <option key={f} value={f}>
-                    {capitalize(f)}
-                  </option>
-                ))}
+                {FRAME_EFFECTS.map((f) => <option key={f} value={f}>{capitalize(f)}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Name Line Color</label>
+              <select className="input" value={form.nameLineColor} onChange={(e) => setField("nameLineColor", e.target.value as FrameColor | "")} disabled={loading}>
+                <option value="">Auto</option>
+                {FRAME_COLORS.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Type Line Color</label>
+              <select className="input" value={form.typeLineColor} onChange={(e) => setField("typeLineColor", e.target.value as FrameColor | "")} disabled={loading}>
+                <option value="">Auto</option>
+                {FRAME_COLORS.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">P/T Box Color</label>
+              <select className="input" value={form.ptBoxColor} onChange={(e) => setField("ptBoxColor", e.target.value as FrameColor | "")} disabled={loading}>
+                <option value="">Auto</option>
+                {FRAME_COLORS.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Color Indicator */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-300 mb-1">Color Indicator</label>
+            <div className="flex flex-wrap gap-2">
+              {COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => toggleColorIndicator(c)} disabled={loading}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${form.colorIndicator.includes(c) ? "bg-gold-500 text-neutral-950 font-semibold" : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"}`}>
+                  {capitalize(c)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Legend Crown */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-neutral-300">Legend Crown</label>
+            <select className="input w-32" value={form.legendCrown === "" ? "" : form.legendCrown ? "yes" : "no"} onChange={(e) => setField("legendCrown", e.target.value === "" ? "" : e.target.value === "yes")} disabled={loading}>
+              <option value="">Auto</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+      </details>
+
+      {/* Metadata */}
+      <details className="border border-neutral-800 rounded-lg">
+        <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
+          Metadata
+        </summary>
+        <div className="px-4 pb-4 pt-2 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Artist</label>
+              <input className="input" value={form.artist} onChange={(e) => setField("artist", e.target.value)} placeholder="Artist name" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Set Code</label>
+              <input className="input font-mono" value={form.setCode} onChange={(e) => setField("setCode", e.target.value)} placeholder="CRU" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Collector Number</label>
+              <input className="input font-mono" value={form.collectorNumber} onChange={(e) => setField("collectorNumber", e.target.value)} placeholder="000" disabled={loading} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Designer</label>
+              <input className="input" value={form.designer} onChange={(e) => setField("designer", e.target.value)} placeholder="Designer name" disabled={loading} />
             </div>
           </div>
         </div>
       </details>
 
-      {/* Live Crucible Text Preview (collapsible) */}
+      {/* Crucible Text Preview */}
       <details className="border border-neutral-800 rounded-lg">
         <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
           Crucible Text Preview
@@ -871,12 +1036,9 @@ export function CardEditForm({
 
       {/* Submit */}
       <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? "Saving..." : "Save Changes"}
+        <button type="submit" disabled={loading}
+          className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          {loading ? "Saving..." : "Save & Re-render"}
         </button>
       </div>
     </form>

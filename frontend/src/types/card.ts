@@ -1,4 +1,17 @@
-import type { CardData, MtgCardDisplayData } from "@domainellipticlanguage/mtg-crucible";
+// Re-export constant arrays and types from crucible (browser-safe constants sub-module)
+import type { CardData, MtgCardDisplayData } from "@domainellipticlanguage/mtg-crucible/constants";
+export type { CardData, MtgCardDisplayData };
+
+export {
+  CARD_TYPES,
+  RARITIES,
+  TEMPLATE_NAMES,
+  FRAME_COLORS,
+  FRAME_EFFECTS,
+  LINK_TYPES,
+  COLORS,
+  SUPERTYPES_LIST,
+} from "@domainellipticlanguage/mtg-crucible/constants";
 
 export interface Card {
   id: string;
@@ -25,23 +38,3 @@ export interface CardResponse {
   canEdit: boolean;
   canDelete: boolean;
 }
-
-export const CARD_TYPES = [
-  "artifact", "creature", "land", "instant", "sorcery",
-  "enchantment", "planeswalker", "battle",
-] as const;
-
-export const RARITIES = ["common", "uncommon", "rare", "mythic"] as const;
-
-export const TEMPLATE_NAMES = [
-  "standard", "planeswalker", "planeswalker_tall", "saga", "class", "battle",
-  "adventure", "transform_front", "transform_back", "mdfc_front", "mdfc_back",
-  "split", "flip", "mutate", "prototype", "leveler", "fuse", "aftermath",
-] as const;
-
-export const FRAME_COLORS = [
-  "white", "blue", "black", "red", "green",
-  "colorless", "artifact", "multicolor", "vehicle", "land",
-] as const;
-
-export const FRAME_EFFECTS = ["normal", "nyx", "snow", "devoid", "miracle"] as const;

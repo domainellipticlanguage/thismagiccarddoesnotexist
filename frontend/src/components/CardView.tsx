@@ -29,10 +29,12 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
           <h1 className="font-display text-3xl text-gold-400">{name}</h1>
           {card.cardData?.manaCost && <p className="text-neutral-400 mt-1 font-mono">{card.cardData.manaCost}</p>}
         </div>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-          <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Card Text</h3>
-          <pre className="text-sm text-neutral-200 whitespace-pre-wrap font-mono">{card.crucibleText}</pre>
-        </div>
+        <details className="bg-neutral-900 border border-neutral-800 rounded-lg">
+          <summary className="px-4 py-2 cursor-pointer text-xs uppercase tracking-wider text-neutral-500 hover:text-neutral-400 transition-colors select-none">Card Text</summary>
+          <div className="px-4 pb-4">
+            <pre className="text-sm text-neutral-200 whitespace-pre-wrap font-mono">{card.crucibleText}</pre>
+          </div>
+        </details>
         {card.explanation && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
             <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Design Notes</h3>
