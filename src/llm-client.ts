@@ -1,24 +1,30 @@
 import OpenAI from "openai";
 import type { LLMCardResponse } from "./types.js";
 
+let _cached: { client: OpenAI; model: string } | undefined;
+
 function getClient(): { client: OpenAI; model: string } {
+  if (_cached) return _cached;
+  
   const provider = (process.env.LLM_PROVIDER || "groq").toLowerCase();
   if (provider === "cerebras") {
-    return {
+    _cached = {
       client: new OpenAI({
         apiKey: process.env.CEREBRAS_API_KEY,
         baseURL: "https://api.cerebras.ai/v1",
       }),
       model: process.env.CEREBRAS_MODEL || "llama-3.3-70b",
     };
+  } else {
+    _cached = {
+      client: new OpenAI({
+        apiKey: process.env.GROQ_API_KEY,
+        baseURL: "https://api.groq.com/openai/v1",
+      }),
+      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    };
   }
-  return {
-    client: new OpenAI({
-      apiKey: process.env.GROQ_API_KEY,
-      baseURL: "https://api.groq.com/openai/v1",
-    }),
-    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-  };
+  return _cached;
 }
 
 const SYSTEM_PROMPT = `You design Magic: The Gathering cards. You output card designs in a text spoiler format.
