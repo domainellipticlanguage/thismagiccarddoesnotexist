@@ -1,4 +1,5 @@
 import { useNavigate, Link } from "react-router-dom";
+import { MtgCard } from "@domainellipticlanguage/mtg-crucible/react";
 import type { Card } from "../types/card";
 import { deleteCard } from "../api/client";
 
@@ -14,12 +15,12 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
-      <div className="flex-shrink-0">
-        {card.renderedUrl ? (
-          <img src={card.renderedUrl} alt={name} className="w-full max-w-sm rounded-lg shadow-2xl" />
+      <div className="flex-shrink-0 max-w-sm">
+        {card.display ? (
+          <MtgCard card={card.display} style={{ width: "100%" }} />
         ) : (
-          <div className="w-full max-w-sm aspect-[5/7] bg-neutral-800 rounded-lg flex items-center justify-center">
-            <span className="text-neutral-500">No render available</span>
+          <div className="w-full aspect-[5/7] bg-neutral-800 rounded-lg flex items-center justify-center animate-pulse">
+            <span className="text-neutral-500">Loading card...</span>
           </div>
         )}
       </div>

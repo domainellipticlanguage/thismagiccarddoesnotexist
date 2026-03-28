@@ -4,6 +4,7 @@ import { uploadFromUrl, getPresignedUrl } from "./s3-storage.js";
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
+/** Generate art, upload to S3, return the raw S3 URI. */
 export async function generateArt(
   artDescription: string,
   width: number,
@@ -31,24 +32,27 @@ export async function generateArt(
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
   const s3Uri = await uploadFromUrl(tempUrl, s3Key);
-  const signedUrl = await getPresignedUrl(s3Uri);
   console.log(`[Art] Uploaded: ${s3Key}`);
-  return signedUrl;
+  return s3Uri;
 }
 
+/** Edit existing art, upload to S3, return the raw S3 URI. */
 export async function editArt(
   artDescription: string,
-  originalArtUrl: string,
+  originalArtS3Uri: string,
   width: number,
   height: number
 ): Promise<string> {
+  // Sign the original art URL so Replicate can fetch it
+  const originalSignedUrl = await getPresignedUrl(originalArtS3Uri);
+
   console.log(`[Art] Editing: ${artDescription.slice(0, 80)}...`);
   const start = Date.now();
 
   const output = await replicate.run("black-forest-labs/flux-kontext-pro", {
     input: {
       prompt: artDescription,
-      input_image: originalArtUrl,
+      input_image: originalSignedUrl,
     },
   });
 
@@ -56,8 +60,7 @@ export async function editArt(
 
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
-  const s3Uri = await uploadFromUrl(tempUrl, s3Key);
-  return getPresignedUrl(s3Uri);
+  return uploadFromUrl(tempUrl, s3Key);
 }
 
 function computeAspectRatio(width: number, height: number): string {

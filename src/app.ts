@@ -7,7 +7,10 @@ import {
   softDeleteCard,
 } from "./card-table.js";
 import { generateCard, applyFieldEdits } from "./card-generator.js";
+import { buildDisplay } from "./card-renderer.js";
+import { getPresignedUrl } from "./s3-storage.js";
 import type {
+  CardRecord,
   CreateCardRequest,
   EditCardFieldsRequest,
   CardResponse,
@@ -45,7 +48,14 @@ app.get("/api/cards", async (_req, res) => {
   try {
     const limit = parseInt((_req.query.limit as string) || "300", 10);
     const cards = await getLatestCards(limit);
-    res.json({ cards } satisfies CardsResponse);
+    // Build display objects with signed URLs for each card
+    const cardsWithDisplay = await Promise.all(
+      cards.map(async (card) => ({
+        ...card,
+        display: await buildDisplay(card),
+      }))
+    );
+    res.json({ cards: cardsWithDisplay });
   } catch (err: any) {
     console.error("[API] GET /api/cards error:", err);
     res.status(500).json({ error: err.message });
@@ -59,6 +69,9 @@ app.get("/api/cards/:id", async (req, res) => {
 
     const creatorId = getCreatorId(req);
     const canEdit = isDebug() || card.creatorId === creatorId;
+
+    // Build display with freshly signed URLs
+    card.display = await buildDisplay(card);
 
     const response: CardResponse = { card, canEdit, canDelete: canEdit };
     res.json(response);

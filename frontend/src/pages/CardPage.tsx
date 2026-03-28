@@ -16,7 +16,11 @@ export function CardPage() {
   useEffect(() => {
     if (!id) return;
     fetchCard(id)
-      .then((data) => { setCard(data.card); setCanEdit(data.canEdit); setCanDelete(data.canDelete); })
+      .then((data) => {
+        setCard(data.card);
+        setCanEdit(data.canEdit);
+        setCanDelete(data.canDelete);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);

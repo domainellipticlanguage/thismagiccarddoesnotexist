@@ -10,8 +10,10 @@ export interface Card {
   suggestionArtwork: string;
   suggestionMechanics: string;
   artEditMode?: string;
-  artUrl: string;
-  renderedUrl: string;
+  artS3Uri: string;
+  frontS3Uri: string;
+  backS3Uri?: string;
+  display?: RenderedCardDisplay;
   creatorId: string;
   parentId?: string;
   sequenceNumber: number;
@@ -25,7 +27,6 @@ export interface CardResponse {
   card: Card;
   canEdit: boolean;
   canDelete: boolean;
-  display?: RenderedCardDisplay;
 }
 
 export const CARD_TYPES = [

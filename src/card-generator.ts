@@ -7,6 +7,7 @@ import {
   getArtDimensionsFromText,
   renderAndUpload,
 } from "./card-renderer.js";
+import { getPresignedUrl } from "./s3-storage.js";
 import {
   getCard,
   putCard,
@@ -37,27 +38,28 @@ export async function generateCard(
 
   // 2. Parse & art dimensions
   console.log("[Pipeline] 2. Parse");
+  console.log("[Pipeline] LLM card_text:\n" + llmResult.card_text);
   const { width, height, cardData } = getArtDimensionsFromText(llmResult.card_text);
 
-  // 3. Art
+  // 3. Art — returns raw S3 URI
   console.log("[Pipeline] 3. Art");
   const artDescription = cardData.artDescription || description;
-  let artUrl: string;
+  let artS3Uri: string;
 
-  if (mode === "edit" && originalCard && llmResult.art_edit_mode === "keep" && originalCard.artUrl) {
-    artUrl = originalCard.artUrl;
-  } else if (mode === "edit" && originalCard && llmResult.art_edit_mode === "edit" && originalCard.artUrl) {
-    artUrl = await editArt(artDescription, originalCard.artUrl, width, height);
+  if (mode === "edit" && originalCard && llmResult.art_edit_mode === "keep" && originalCard.artS3Uri) {
+    artS3Uri = originalCard.artS3Uri;
+  } else if (mode === "edit" && originalCard && llmResult.art_edit_mode === "edit" && originalCard.artS3Uri) {
+    artS3Uri = await editArt(artDescription, originalCard.artS3Uri, width, height);
   } else {
-    artUrl = await generateArt(artDescription, width, height);
+    artS3Uri = await generateArt(artDescription, width, height);
   }
 
-  // 4. Render
+  // 4. Render — sign the art URL so crucible can fetch it
   console.log("[Pipeline] 4. Render");
-  cardData.artUrl = artUrl;
-  const { rendered, renderedS3Uri, renderedUrl } = await renderAndUpload(cardData);
+  cardData.artUrl = await getPresignedUrl(artS3Uri);
+  const { rendered, frontS3Uri, backS3Uri } = await renderAndUpload(cardData);
 
-  // 5. Store
+  // 5. Store — persist raw S3 URIs only
   console.log("[Pipeline] 5. Store");
   const sequenceNumber = await nextSequenceNumber();
 
@@ -71,10 +73,9 @@ export async function generateCard(
     suggestionArtwork: llmResult.suggestion_artwork,
     suggestionMechanics: llmResult.suggestion_mechanics,
     artEditMode: llmResult.art_edit_mode,
-    artUrl,
-    artS3Uri: "",
-    renderedS3Uri,
-    renderedUrl,
+    artS3Uri,
+    frontS3Uri,
+    backS3Uri,
     creatorId,
     parentId: originalCardId,
     sequenceNumber,
@@ -105,17 +106,17 @@ export async function applyFieldEdits(
   const cardId = uuid();
   const cardData = parseCard(newCrucibleText);
 
-  let artUrl = original.artUrl;
+  let artS3Uri = original.artS3Uri;
   const oldArtDesc = original.cardData?.artDescription;
   const newArtDesc = cardData.artDescription;
 
   if (newArtDesc && newArtDesc !== oldArtDesc) {
     const { width, height } = getArtDimensionsFromText(newCrucibleText);
-    artUrl = await generateArt(newArtDesc, width, height);
+    artS3Uri = await generateArt(newArtDesc, width, height);
   }
 
-  cardData.artUrl = artUrl;
-  const { rendered, renderedS3Uri, renderedUrl } = await renderAndUpload(cardData);
+  cardData.artUrl = await getPresignedUrl(artS3Uri);
+  const { rendered, frontS3Uri, backS3Uri } = await renderAndUpload(cardData);
   const sequenceNumber = await nextSequenceNumber();
 
   const record: CardRecord = {
@@ -127,10 +128,9 @@ export async function applyFieldEdits(
     explanation: original.explanation,
     suggestionArtwork: original.suggestionArtwork,
     suggestionMechanics: original.suggestionMechanics,
-    artUrl,
-    artS3Uri: "",
-    renderedS3Uri,
-    renderedUrl,
+    artS3Uri,
+    frontS3Uri,
+    backS3Uri,
     creatorId,
     parentId: originalCardId,
     sequenceNumber,

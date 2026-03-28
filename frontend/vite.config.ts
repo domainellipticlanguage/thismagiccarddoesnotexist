@@ -4,9 +4,15 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: {
+    include: ["@domainellipticlanguage/mtg-crucible/react"],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    commonjsOptions: {
+      include: [/mtg-crucible/, /node_modules/],
+    },
   },
   server: {
     port: 5173,

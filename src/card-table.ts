@@ -8,7 +8,9 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { CardRecord } from "./types.js";
 
-const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
+  marshallOptions: { removeUndefinedValues: true },
+});
 
 function tableName(): string {
   return process.env.DYNAMODB_TABLE || "thismagiccarddoesnotexist3";

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { fetchCard, createCard, editCardFields } from "../api/client";
 import type { Card } from "../types/card";
+import { MtgCard } from "@domainellipticlanguage/mtg-crucible/react";
 import { CardEditForm } from "../components/CardEditForm";
 import { CreateForm } from "../components/CreateForm";
 import { LoadingSpinner } from "../components/LoadingSpinner";
@@ -57,7 +58,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
-            {card.renderedUrl && <img src={card.renderedUrl} alt={card.cardData?.name || "Card"} className="w-full rounded-lg shadow-xl" />}
+            {card.display && <MtgCard card={card.display} style={{ width: "100%" }} />}
           </div>
           <div className="lg:col-span-2">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
