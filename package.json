@@ -12,7 +12,6 @@
     "@aws-sdk/client-dynamodb": "^3.800.0",
     "@aws-sdk/lib-dynamodb": "^3.800.0",
     "@aws-sdk/client-s3": "^3.800.0",
-    "@aws-sdk/s3-request-presigner": "^3.800.0",
     "@domainellipticlanguage/mtg-crucible": "file:../mtg-crucible",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",

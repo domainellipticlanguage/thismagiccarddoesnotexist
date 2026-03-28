@@ -1,19 +1,45 @@
 import { v4 as uuid } from "uuid";
 import type { CardDocument } from "./types.js";
+import type { CardData } from "@domainellipticlanguage/mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
-import { generateArt, editArt } from "./art-generator.js";
+import { generateArt } from "./art-generator.js";
 import {
   parseCard,
+  getArtDimensions,
   getArtDimensionsFromText,
   renderAndUpload,
 } from "./card-renderer.js";
-import { getPresignedUrl } from "./s3-storage.js";
 import {
   getCard,
   putCardRows,
   flattenCardData,
   markSuperseded,
 } from "./card-table.js";
+
+/** Generate art for every face in the linkedCard chain. */
+async function generateArtForAllFaces(cardData: CardData): Promise<void> {
+  let current: CardData | undefined = cardData;
+  while (current) {
+    if (current.artDescription && !current.artUrl) {
+      const dims = getArtDimensions(current);
+      current.artUrl = await generateArt(
+        current.artDescription,
+        dims.width,
+        dims.height
+      );
+    }
+    current = current.linkedCard;
+  }
+}
+
+/** Strip artUrl from all faces (keep artDescription). Used before persisting. */
+function stripArtUrls(cardData: CardData): void {
+  let current: CardData | undefined = cardData;
+  while (current) {
+    delete current.artUrl;
+    current = current.linkedCard;
+  }
+}
 
 export async function generateCard(
   description: string,
@@ -36,33 +62,26 @@ export async function generateCard(
   console.log("[Pipeline] 1. LLM");
   const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
 
-  // 2. Parse & art dimensions
+  // 2. Parse
   console.log("[Pipeline] 2. Parse");
   console.log("[Pipeline] LLM card_text:\n" + llmResult.card_text);
-  const { width, height, cardData } = getArtDimensionsFromText(llmResult.card_text);
+  const { cardData } = getArtDimensionsFromText(llmResult.card_text);
 
-  // 3. Art — returns raw S3 URI
+  // 3. Art — generate for every face
   console.log("[Pipeline] 3. Art");
-  const artDescription = cardData.artDescription || description;
-  let artS3Uri: string;
+  await generateArtForAllFaces(cardData);
 
-  if (mode === "edit" && originalCard && llmResult.art_edit_mode === "keep" && originalCard.renderedS3Uris?.[0]) {
-    // Keep existing — use the original card's art
-    artS3Uri = originalCard.renderedS3Uris[0]; // TODO: track art S3 URI separately if needed
-  } else {
-    artS3Uri = await generateArt(artDescription, width, height);
-  }
-
-  // 4. Render — sign the art URL so crucible can fetch it
+  // 4. Render
   console.log("[Pipeline] 4. Render");
-  cardData.artUrl = await getPresignedUrl(artS3Uri);
+  const { rendered, renderedUrls } = await renderAndUpload(cardData);
 
-  // TODO: if linkedCard has its own art, generate/sign that too
-  const { rendered, renderedS3Uris } = await renderAndUpload(cardData);
+  // Strip art URLs before persisting (they're public S3 URLs but we
+  // don't want them in crucibleText — artDescription is sufficient)
+  stripArtUrls(cardData);
 
-  // 5. Store — flatten into rows
+  // 5. Store
   console.log("[Pipeline] 5. Store");
-  const rows = flattenCardData(cardId, cardData, renderedS3Uris, {
+  const rows = flattenCardData(cardId, cardData, renderedUrls, {
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
     prompt: description,
@@ -85,7 +104,6 @@ export async function generateCard(
 
   console.log(`[Pipeline] Done: ${cardId}`);
 
-  // Return assembled record
   return {
     id: cardId,
     cardData,
@@ -102,7 +120,7 @@ export async function generateCard(
     isDeleted: false,
     isFinished: true,
     isSuperseded: false,
-    renderedS3Uris,
+    renderedUrls,
   };
 }
 
@@ -117,15 +135,13 @@ export async function applyFieldEdits(
   const cardId = uuid();
   const cardData = parseCard(newCrucibleText);
 
-  // TODO: handle art regeneration for edits
-  // For now, reuse original art if available
-  if (original.renderedS3Uris?.[0]) {
-    cardData.artUrl = await getPresignedUrl(original.renderedS3Uris[0]);
-  }
+  // Generate art for faces that need it
+  await generateArtForAllFaces(cardData);
 
-  const { rendered, renderedS3Uris } = await renderAndUpload(cardData);
+  const { rendered, renderedUrls } = await renderAndUpload(cardData);
+  stripArtUrls(cardData);
 
-  const rows = flattenCardData(cardId, cardData, renderedS3Uris, {
+  const rows = flattenCardData(cardId, cardData, renderedUrls, {
     crucibleText: rendered.crucibleText,
     scryfallText: rendered.scryfallText,
     prompt: original.prompt,
@@ -158,6 +174,6 @@ export async function applyFieldEdits(
     isDeleted: false,
     isFinished: true,
     isSuperseded: false,
-    renderedS3Uris,
+    renderedUrls,
   };
 }

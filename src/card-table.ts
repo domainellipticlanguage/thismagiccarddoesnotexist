@@ -30,8 +30,8 @@ export async function putCardRows(rows: CardRow[]): Promise<void> {
 export function flattenCardData(
   id: string,
   cardData: CardData,
-  renderedS3Uris: string[],
-  meta: Omit<CardRow, "id" | "subCardIndex" | "cardData" | "renderedS3Uri">
+  renderedUrls: string[],
+  meta: Omit<CardRow, "id" | "subCardIndex" | "cardData" | "renderedUrl">
 ): CardRow[] {
   const rows: CardRow[] = [];
   let index = 0;
@@ -39,18 +39,16 @@ export function flattenCardData(
 
   while (current) {
     // Strip linkedCard from the stored cardData — it's the next row
-    const { linkedCard, linkType, ...rest }: CardData = current;
+    const { linkedCard, ...rest }: CardData = current;
     const row: CardRow = {
       id,
       subCardIndex: index,
       cardData: rest as CardData,
-      renderedS3Uri: renderedS3Uris[index] || "",
+      renderedUrl: renderedUrls[index] || "",
     };
 
     if (index === 0) {
-      // Metadata only on main face
       Object.assign(row, meta);
-      if (linkType) row.linkType = linkType;
     }
 
     rows.push(row);
@@ -72,9 +70,6 @@ function assembleCard(rows: CardRow[]): CardDocument {
     let current = cardData;
     for (let i = 1; i < sorted.length; i++) {
       current.linkedCard = { ...sorted[i].cardData };
-      if (i === 1 && main.linkType) {
-        cardData.linkType = main.linkType;
-      }
       current = current.linkedCard;
     }
   }
@@ -95,7 +90,7 @@ function assembleCard(rows: CardRow[]): CardDocument {
     isDeleted: main.isDeleted || false,
     isFinished: main.isFinished || false,
     isSuperseded: main.isSuperseded || false,
-    renderedS3Uris: sorted.map((r) => r.renderedS3Uri),
+    renderedUrls: sorted.map((r) => r.renderedUrl),
   };
 }
 

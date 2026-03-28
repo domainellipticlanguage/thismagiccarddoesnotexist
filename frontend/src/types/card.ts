@@ -10,7 +10,7 @@ export interface Card {
   suggestionArtwork: string;
   suggestionMechanics: string;
   artEditMode?: string;
-  renderedS3Uris: string[];
+  renderedUrls: string[];
   display?: RenderedCardDisplay;
   creatorId: string;
   parentId?: string;

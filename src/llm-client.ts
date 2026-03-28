@@ -47,7 +47,7 @@ Line 1: Card Name {Mana Cost}
 Then metadata lines (optional, one per line):
   Rarity: common | uncommon | rare | mythic
   Art Description: A vivid description of the card art to generate
-  Flavor Text: The italic flavor text
+  Flavor Text: The flavor text
 
 Then the type line:
   Examples: Legendary Creature — Human Wizard

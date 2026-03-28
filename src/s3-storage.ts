@@ -1,9 +1,4 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const s3 = new S3Client({});
 
@@ -24,7 +19,7 @@ export async function uploadBuffer(
       ContentType: contentType,
     })
   );
-  return `s3://${bucketName()}/${key}`;
+  return getPublicUrl(key);
 }
 
 export async function uploadFromUrl(
@@ -37,21 +32,7 @@ export async function uploadFromUrl(
   return uploadBuffer(buffer, key, contentType);
 }
 
-export function getPublicUrl(s3Uri: string): string {
-  const match = s3Uri.match(/^s3:\/\/([^/]+)\/(.+)$/);
-  if (!match) return s3Uri;
-  return `https://${match[1]}.s3.amazonaws.com/${match[2]}`;
-}
-
-export async function getPresignedUrl(
-  s3Uri: string,
-  expiresIn = 3600
-): Promise<string> {
-  const match = s3Uri.match(/^s3:\/\/([^/]+)\/(.+)$/);
-  if (!match) return s3Uri;
-  return getSignedUrl(
-    s3,
-    new GetObjectCommand({ Bucket: match[1], Key: match[2] }),
-    { expiresIn }
-  );
+/** Public URL for an S3 key. */
+export function getPublicUrl(key: string): string {
+  return `https://${bucketName()}.s3.amazonaws.com/${key}`;
 }

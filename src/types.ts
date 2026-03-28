@@ -1,11 +1,11 @@
-import type { CardData, LinkType, RenderedCardDisplay } from "@domainellipticlanguage/mtg-crucible";
+import type { CardData, RenderedCardDisplay } from "@domainellipticlanguage/mtg-crucible";
 
 /** A single row in DynamoDB — one face/sub-card of a card. */
 export interface CardRow {
   id: string;
   subCardIndex: number;
   cardData: CardData;
-  renderedS3Uri: string;
+  renderedUrl: string;
 
   // Only on subCardIndex 0:
   crucibleText?: string;
@@ -21,7 +21,6 @@ export interface CardRow {
   isDeleted?: boolean;
   isFinished?: boolean;
   isSuperseded?: boolean;
-  linkType?: LinkType;
 }
 
 /** Assembled card with all faces, ready for API response. */
@@ -43,7 +42,7 @@ export interface CardDocument {
   isSuperseded: boolean;
   display?: RenderedCardDisplay;
   /** S3 URIs for each face, indexed by subCardIndex */
-  renderedS3Uris: string[];
+  renderedUrls: string[];
 }
 
 export interface CardResponse {
