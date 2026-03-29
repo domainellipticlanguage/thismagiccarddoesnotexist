@@ -132,7 +132,9 @@ app.post("/api/cards", async (req, res) => {
 
 // --- Static file serving (built React app) ---
 
-const staticDir = path.resolve(__dirname, "..", "frontend", "dist");
+const staticDir = process.env.LAMBDA_TASK_ROOT
+  ? path.resolve(process.env.LAMBDA_TASK_ROOT, "frontend", "dist")
+  : path.resolve(__dirname, "..", "frontend", "dist");
 app.use(express.static(staticDir));
 
 // SPA fallback — serve index.html for all non-API routes

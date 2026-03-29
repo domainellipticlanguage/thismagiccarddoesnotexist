@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "build": "cd frontend && npm run build",
-    "deploy": "npm run build && sam build && sam deploy",
+    "deploy": "npm run build && npx sst deploy --stage production",
     "start": "node dist/server.js"
   },
   "dependencies": {

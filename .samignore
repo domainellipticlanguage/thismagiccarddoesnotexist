@@ -1,5 +1,0 @@
-.git
-.aws-sam
-.serverless
-frontend/node_modules
-frontend/src
