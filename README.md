@@ -63,3 +63,9 @@ Uses Serverless Framework to deploy to AWS Lambda. Creates DynamoDB table and S3
 | `DYNAMODB_TABLE` | No | Table name (default: `thismagiccarddoesnotexist3`) |
 | `S3_BUCKET` | No | Bucket name (default: `thismagiccarddoesnotexist3`) |
 | `PORT` | No | Server port (default: 3001) |
+
+
+# TODO
+Improve LLM instructions.
+Let LLM know to leave art description blank if no changes.
+But tell it to regenerate full text format description..
