@@ -31,13 +31,12 @@ export default $config({
       public: true,
     });
 
-    const api = new sst.aws.Function("Api", {
+    const fn = new sst.aws.Function("Api", {
       handler: "handler.handler",
       runtime: "nodejs22.x",
       memory: "2048 MB",
       timeout: "120 seconds",
       architecture: "arm64",
-      url: true,
       link: [table, bucket],
       environment: {
         DYNAMODB_TABLE: table.name,
@@ -50,13 +49,15 @@ export default $config({
         IS_DEBUG: process.env.IS_DEBUG ?? "false",
       },
       nodejs: {
-        install: ["@napi-rs/canvas", "@napi-rs/canvas-linux-arm64-gnu"],
+        install: ["@napi-rs/canvas", "@napi-rs/canvas-linux-arm64-gnu", "@domainellipticlanguage/mtg-crucible"],
       },
       copyFiles: [
         { from: "frontend/dist", to: "frontend/dist" },
-        { from: "node_modules/@domainellipticlanguage/mtg-crucible/assets", to: "assets" },
       ],
     });
+
+    const api = new sst.aws.ApiGatewayV2("HttpApi");
+    api.route("$default", fn.arn);
 
     return {
       url: api.url,

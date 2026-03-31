@@ -18,6 +18,14 @@ import type {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
+
+// serverless-http may pass body as a Buffer — convert before express.json() runs
+app.use((req, _res, next) => {
+  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+    req.body = JSON.parse(req.body.toString());
+  }
+  next();
+});
 app.use(express.json());
 
 // --- API Routes ---
