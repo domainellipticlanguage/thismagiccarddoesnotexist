@@ -81,13 +81,31 @@ const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
         explanation: { type: "string", description: "Brief explanation of the design" },
         suggestionArtwork: { type: "string", description: "A specific suggestion for an art edit" },
         suggestionMechanics: { type: "string", description: "A specific suggestion for a mechanics change" },
-        artEditMode: {
-          type: "string",
-          enum: ["keep", "edit", "regenerate"],
-          description: "For edit mode only: keep existing art, edit it, or regenerate from scratch",
+        artDirectives: {
+          type: "object",
+          description: "For edit mode only: per-face art generation instructions. reference defaults to primary_old if omitted.",
+          properties: {
+            primary: {
+              type: "object",
+              properties: {
+                mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"], description: "no_edit: use referenced art as-is. fine_grained_edit: edit referenced art with Flux Kontext (put ONLY the delta in artDescription). coarse_grained_edit: generate new art from scratch." },
+                reference: { type: "string", enum: ["primary_old", "secondary_old"], description: "Which face's existing art to use as source. Ignored for coarse_grained_edit." },
+              },
+              required: ["mode"],
+            },
+            secondary: {
+              type: "object",
+              properties: {
+                mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"] },
+                reference: { type: "string", enum: ["primary_old", "secondary_old"] },
+              },
+              required: ["mode"],
+            },
+          },
+          required: ["primary"],
         },
       },
-      required: ["card", "explanation", "suggestionArtwork", "suggestionMechanics"],
+      required: ["card", "explanation"],
     },
   },
 };
@@ -183,10 +201,19 @@ function buildMessages(
     return [
       {
         role: "system",
-        content: SYSTEM_PROMPT + `\n\nWhen editing, also set artEditMode:
-- "keep" — keep the existing art unchanged (default if art is not mentioned)
-- "edit" — make fine-tuned edits to the existing art. Put ONLY the delta/changes in artDescription.
-- "regenerate" — generate completely new art from scratch`,
+        content: SYSTEM_PROMPT + `\n\nWhen editing, set artDirectives to control art for each face:
+- Each face gets a directive with "mode" and optional "reference"
+- Modes:
+  - "no_edit" — use the referenced face's existing art as-is (default if art is not mentioned)
+  - "fine_grained_edit" — make targeted edits to the referenced art. Put ONLY the delta/changes in artDescription.
+  - "coarse_grained_edit" — generate completely new art from scratch
+- References: "primary_old" (first face's current art), "secondary_old" (second face's current art). Defaults to "primary_old".
+- For single-face cards, only set primary. For multi-face, set both primary and secondary.
+- Examples:
+  - Keep art: { primary: { mode: "no_edit" } }
+  - Edit art: { primary: { mode: "fine_grained_edit" } }
+  - Swap faces' art: { primary: { mode: "no_edit", reference: "secondary_old" }, secondary: { mode: "no_edit", reference: "primary_old" } }
+  - Face 2 themed from face 1: { primary: { mode: "coarse_grained_edit" }, secondary: { mode: "fine_grained_edit", reference: "primary_old" } }`,
       },
       {
         role: "user",
@@ -245,7 +272,7 @@ export async function createCard(
         explanation: args.explanation || "",
         suggestion_artwork: args.suggestionArtwork || "",
         suggestion_mechanics: args.suggestionMechanics || "",
-        art_edit_mode: args.artEditMode,
+        art_directives: args.artDirectives,
       };
     } catch (err: any) {
       lastError = err;

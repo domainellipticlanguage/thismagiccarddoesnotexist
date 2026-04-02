@@ -22,7 +22,7 @@ export interface Card {
   explanation: string;
   suggestionArtwork: string;
   suggestionMechanics: string;
-  artEditMode?: string;
+  artDirectives?: { primary: { mode: string; reference?: string }; secondary?: { mode: string; reference?: string } };
   renderedUrls: string[];
   display?: MtgCardDisplayData;
   creatorId: string;

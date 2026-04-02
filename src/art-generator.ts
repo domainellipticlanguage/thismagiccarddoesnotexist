@@ -37,20 +37,25 @@ export async function generateArt(
   return publicUrl;
 }
 
-/** Edit existing art, upload to S3, return public URL. */
+/** Edit existing art via Flux Kontext, upload to S3, return public URL. */
 export async function editArt(
   artDescription: string,
   originalArtUrl: string,
-  width: number,
-  height: number
+  targetWidth?: number,
+  targetHeight?: number,
 ): Promise<string> {
-  console.log(`[Art] Editing: ${artDescription.slice(0, 80)}...`);
+  const aspectRatio = (targetWidth && targetHeight)
+    ? closestKontextRatio(targetWidth, targetHeight)
+    : "match_input_image";
+
+  console.log(`[Art] Editing (aspect ${aspectRatio}): ${artDescription.slice(0, 80)}...`);
   const start = Date.now();
 
   const output = await replicate.run("black-forest-labs/flux-kontext-pro", {
     input: {
       prompt: artDescription,
       input_image: originalArtUrl,
+      aspect_ratio: aspectRatio,
     },
   });
 
@@ -59,6 +64,36 @@ export async function editArt(
   const tempUrl = output as unknown as string;
   const s3Key = `art/${uuid()}.png`;
   return uploadFromUrl(tempUrl, s3Key);
+}
+
+const KONTEXT_RATIOS = [
+  { label: "1:1",   ratio: 1 },
+  { label: "16:9",  ratio: 16/9 },
+  { label: "9:16",  ratio: 9/16 },
+  { label: "4:3",   ratio: 4/3 },
+  { label: "3:4",   ratio: 3/4 },
+  { label: "3:2",   ratio: 3/2 },
+  { label: "2:3",   ratio: 2/3 },
+  { label: "4:5",   ratio: 4/5 },
+  { label: "5:4",   ratio: 5/4 },
+  { label: "21:9",  ratio: 21/9 },
+  { label: "9:21",  ratio: 9/21 },
+  { label: "2:1",   ratio: 2 },
+  { label: "1:2",   ratio: 0.5 },
+];
+
+function closestKontextRatio(width: number, height: number): string {
+  const target = width / height;
+  let best = KONTEXT_RATIOS[0];
+  let bestDiff = Math.abs(Math.log(target / best.ratio));
+  for (const entry of KONTEXT_RATIOS) {
+    const diff = Math.abs(Math.log(target / entry.ratio));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = entry;
+    }
+  }
+  return best.label;
 }
 
 /** Scale dimensions to fit within [min, max] while preserving aspect ratio. */

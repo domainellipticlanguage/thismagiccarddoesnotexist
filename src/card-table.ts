@@ -7,7 +7,16 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { CardData } from "@domainellipticlanguage/mtg-crucible";
-import type { CardRow, CardDocument } from "./types.js";
+import type { CardRow, CardDocument, ArtDirectives } from "./types.js";
+
+/** Map legacy artEditMode string to ArtDirectives. */
+function legacyArtEditMode(row: CardRow): ArtDirectives | undefined {
+  const mode = (row as any).artEditMode as string | undefined;
+  if (!mode) return undefined;
+  if (mode === "keep") return { primary: { mode: "no_edit", reference: "primary_old" } };
+  if (mode === "edit") return { primary: { mode: "fine_grained_edit", reference: "primary_old" } };
+  return { primary: { mode: "coarse_grained_edit" } };
+}
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -85,7 +94,7 @@ function assembleCard(rows: CardRow[]): CardDocument {
     explanation: main.explanation || "",
     suggestionArtwork: main.suggestionArtwork || "",
     suggestionMechanics: main.suggestionMechanics || "",
-    artEditMode: main.artEditMode,
+    artDirectives: main.artDirectives ?? legacyArtEditMode(main),
     creatorId: main.creatorId || "",
     parentId: main.parentId,
     createdDate: main.createdDate || "",

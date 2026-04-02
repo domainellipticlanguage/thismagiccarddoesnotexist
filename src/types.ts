@@ -1,5 +1,28 @@
 import type { CardData, MtgCardDisplayData, Rotation } from "@domainellipticlanguage/mtg-crucible";
 
+// ---------------------------------------------------------------------------
+// Art directives — per-face art generation instructions
+// ---------------------------------------------------------------------------
+
+/** Which existing face's art to reference. Always from the original (pre-edit) card. */
+export type ArtReference = "primary_old" | "secondary_old";
+
+/** How to generate art for a face. */
+export type FaceArtMode = "no_edit" | "fine_grained_edit" | "coarse_grained_edit";
+
+/** Art instruction for a single face. */
+export interface FaceArtDirective {
+  mode: FaceArtMode;
+  /** Required for no_edit/fine_grained_edit. Ignored for coarse_grained_edit. Defaults to primary_old if omitted. */
+  reference?: ArtReference;
+}
+
+/** Per-face art directives. */
+export interface ArtDirectives {
+  primary: FaceArtDirective;
+  secondary?: FaceArtDirective;
+}
+
 /** A single row in DynamoDB — one face/sub-card of a card. */
 export interface CardRow {
   id: string;
@@ -16,7 +39,7 @@ export interface CardRow {
   explanation?: string;
   suggestionArtwork?: string;
   suggestionMechanics?: string;
-  artEditMode?: string;
+  artDirectives?: ArtDirectives;
   creatorId?: string;
   parentId?: string;
   createdDate?: string;
@@ -37,7 +60,7 @@ export interface CardDocument {
   explanation: string;
   suggestionArtwork: string;
   suggestionMechanics: string;
-  artEditMode?: string;
+  artDirectives?: ArtDirectives;
   creatorId: string;
   parentId?: string;
   createdDate: string;
@@ -74,5 +97,5 @@ export interface LLMCardResponse {
   explanation: string;
   suggestion_artwork: string;
   suggestion_mechanics: string;
-  art_edit_mode?: "keep" | "edit" | "regenerate";
+  art_directives?: ArtDirectives;
 }
