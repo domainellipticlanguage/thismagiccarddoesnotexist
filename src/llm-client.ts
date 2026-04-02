@@ -262,6 +262,7 @@ export async function createCard(
       }
 
       const args = JSON.parse(toolCall.function.arguments);
+      console.log(`[LLM] Tool call args:\n${JSON.stringify(args, null, 2)}`);
       const card: LLMCard = args.card;
       if (!card?.name) throw new Error("Missing card name in tool call");
 

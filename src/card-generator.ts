@@ -44,6 +44,7 @@ async function generateArtForAllFaces(
   }
 
   const dims = getArtDimensions(cardData);
+  console.log(`[Art] ${faces.length} face(s), directives=${JSON.stringify(artDirectives ?? "none")}, originalCard=${originalCard ? "yes" : "no"}`);
 
   // Process all faces in parallel (no _new deps, only _old references)
   await Promise.all(faces.map(async ({ data, directive, faceIndex }) => {
@@ -56,37 +57,43 @@ async function generateArtForAllFaces(
     const mode = directive?.mode ?? "coarse_grained_edit";
     const ref = directive?.reference ?? "primary_old";
 
+    console.log(`[Art] Face ${faceIndex}: directive=${JSON.stringify(directive ?? "none")} → mode=${mode}, ref=${ref}`);
+
     if (mode === "no_edit" && originalCard) {
       const refUrl = resolveArtReference(ref, originalCard);
       if (refUrl) {
         data.artUrl = refUrl;
-        console.log(`[Art] Face ${faceIndex}: copied from ${ref}`);
+        console.log(`[Art] Face ${faceIndex}: no_edit — copied art from ${ref}`);
         return;
       }
+      console.log(`[Art] Face ${faceIndex}: no_edit requested but ref ${ref} has no art URL, falling back to generate`);
     }
 
     if (mode === "fine_grained_edit" && originalCard) {
       const refUrl = resolveArtReference(ref, originalCard);
       if (refUrl && data.artDescription) {
+        console.log(`[Art] Face ${faceIndex}: fine_grained_edit — Kontext editing from ${ref} (${targetDims.width}x${targetDims.height})`);
         data.artUrl = await editArt(
           data.artDescription,
           refUrl,
           targetDims.width,
           targetDims.height,
         );
-        console.log(`[Art] Face ${faceIndex}: Kontext edited from ${ref}`);
         return;
       }
+      console.log(`[Art] Face ${faceIndex}: fine_grained_edit requested but ref ${ref} has no art URL or no artDescription, falling back to generate`);
     }
 
     // coarse_grained_edit or fallback
     if (data.artDescription) {
+      console.log(`[Art] Face ${faceIndex}: coarse_grained_edit — generating from scratch (${targetDims.width}x${targetDims.height})`);
       data.artUrl = await generateArt(
         data.artDescription,
         targetDims.width,
         targetDims.height,
       );
-      console.log(`[Art] Face ${faceIndex}: generated from scratch`);
+    } else {
+      console.log(`[Art] Face ${faceIndex}: no artDescription, skipping`);
     }
   }));
 }
