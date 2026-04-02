@@ -6,7 +6,6 @@ import { generateArt } from "./art-generator.js";
 import {
   parseCard,
   getArtDimensions,
-  getArtDimensionsFromText,
   renderAndUpload,
 } from "./card-renderer.js";
 import {
@@ -24,8 +23,8 @@ async function generateArtForAllFaces(cardData: CardData): Promise<void> {
       const dims = getArtDimensions(current);
       current.artUrl = await generateArt(
         current.artDescription,
-        dims.width,
-        dims.height
+        dims.primaryArtDimensions.width,
+        dims.primaryArtDimensions.height
       );
     }
     current = current.linkedCard;
@@ -62,10 +61,10 @@ export async function generateCard(
   console.log("[Pipeline] 1. LLM");
   const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
 
-  // 2. Parse
-  console.log("[Pipeline] 2. Parse");
-  console.log("[Pipeline] LLM card_text:\n" + llmResult.card_text);
-  const { cardData } = getArtDimensionsFromText(llmResult.card_text);
+  // 2. CardData from LLM (already structured)
+  console.log("[Pipeline] 2. CardData");
+  const cardData = llmResult.cardData;
+  console.log("[Pipeline] Card:", cardData.name);
 
   // 3. Art — generate for every face
   console.log("[Pipeline] 3. Art");

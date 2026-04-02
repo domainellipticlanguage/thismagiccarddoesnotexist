@@ -1,23 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type {
-  CardData,
-  Rarity,
-  TemplateName,
-  FrameColor,
-  AccentColor,
-  FrameEffect,
-  Supertype,
-  Type,
-  Color,
-  LinkType,
-} from "@domainellipticlanguage/mtg-crucible/constants";
+import {
+  parseTypeLine,
+  type CardData,
+  type Rarity,
+  type TemplateName,
+  type FrameColor,
+  type AccentColor,
+  type FrameEffect,
+  type Supertype,
+  type Type,
+  type Color,
+  type LinkType,
+  type ParsedTypeLine,
+} from "@domainellipticlanguage/mtg-crucible/parser";
 import {
   CARD_TYPES,
   RARITIES,
-  TEMPLATE_NAMES,
   FRAME_COLORS,
   FRAME_EFFECTS,
-  LINK_TYPES,
   COLORS,
   SUPERTYPES_LIST,
 } from "../types/card";
@@ -27,6 +27,102 @@ import {
 // ---------------------------------------------------------------------------
 
 const SUPERTYPES = SUPERTYPES_LIST;
+
+// ---------------------------------------------------------------------------
+// Layout + Face Template types (form-only, mapped to/from CardData on save/load)
+// ---------------------------------------------------------------------------
+
+type Layout = "single" | "transform" | "mdfc" | "adventure" | "split" | "fuse" | "aftermath" | "flip";
+
+type FaceTemplate = "" | "standard" | "planeswalker" | "saga" | "class"
+  | "leveler" | "prototype" | "mutate" | "battle";
+
+const LAYOUT_OPTIONS: { label: string; value: Layout }[] = [
+  { label: "Single Face", value: "single" },
+  { label: "Transform (DFC)", value: "transform" },
+  { label: "Modal DFC", value: "mdfc" },
+  { label: "Adventure", value: "adventure" },
+  { label: "Split", value: "split" },
+  { label: "Fuse", value: "fuse" },
+  { label: "Aftermath", value: "aftermath" },
+  { label: "Flip", value: "flip" },
+];
+
+const LAYOUT_TO_LINK_TYPE: Record<Layout, LinkType | undefined> = {
+  single: undefined, transform: "transform", mdfc: "modal_dfc",
+  adventure: "adventure", split: "split", fuse: "fuse",
+  aftermath: "aftermath", flip: "flip",
+};
+
+const FACE_TEMPLATES: { label: string; value: FaceTemplate }[] = [
+  { label: "Auto-detect", value: "" },
+  { label: "Standard", value: "standard" },
+  { label: "Planeswalker", value: "planeswalker" },
+  { label: "Saga", value: "saga" },
+  { label: "Class", value: "class" },
+  { label: "Leveler", value: "leveler" },
+  { label: "Prototype", value: "prototype" },
+  { label: "Mutate", value: "mutate" },
+  { label: "Battle", value: "battle" },
+];
+
+/** Reverse-map CardData to Layout for form initialization. */
+function inferLayout(cd: CardData): Layout {
+  if (cd.linkType) {
+    const map: Record<LinkType, Layout> = {
+      transform: "transform", modal_dfc: "mdfc", adventure: "adventure",
+      split: "split", fuse: "fuse", flip: "flip", aftermath: "aftermath",
+    };
+    return map[cd.linkType];
+  }
+  const t = cd.cardTemplate;
+  if (t) {
+    const map: Partial<Record<TemplateName, Layout>> = {
+      transform_front: "transform", transform_back: "transform",
+      mdfc_front: "mdfc", mdfc_back: "mdfc",
+      adventure: "adventure", split: "split", fuse: "fuse",
+      flip: "flip", aftermath: "aftermath",
+    };
+    if (map[t]) return map[t]!;
+  }
+  return "single";
+}
+
+/** Reverse-map CardData.cardTemplate to FaceTemplate for form initialization. */
+function inferFaceTemplate(cd: CardData): FaceTemplate {
+  const t = cd.cardTemplate;
+  if (!t) return "";
+  // Layout-level templates → auto-detect (the layout handles these)
+  const layoutTemplates: TemplateName[] = [
+    "transform_front", "transform_back", "mdfc_front", "mdfc_back",
+    "adventure", "split", "fuse", "flip", "aftermath",
+  ];
+  if (layoutTemplates.includes(t)) return "";
+  if (t === "planeswalker_tall") return "planeswalker";
+  return t as FaceTemplate;
+}
+
+/** Map form (layout, faceTemplate) → CardData.cardTemplate for crucible. */
+function resolveFormTemplate(layout: Layout, faceTemplate: FaceTemplate): TemplateName | undefined {
+  if (!faceTemplate || faceTemplate === "standard") {
+    // For single-image layouts that are templates themselves, use the layout name
+    const layoutAsTemplate: Partial<Record<Layout, TemplateName>> = {
+      adventure: "adventure", split: "split", fuse: "fuse",
+      aftermath: "aftermath", flip: "flip",
+    };
+    if (layoutAsTemplate[layout]) return layoutAsTemplate[layout];
+    // For transform/mdfc/single with standard/auto: let crucible auto-detect
+    return undefined;
+  }
+  // Non-standard face template (planeswalker, saga, etc.) — pass through
+  return faceTemplate as TemplateName;
+}
+
+function resolveTypeLine(tl: CardData["typeLine"]): ParsedTypeLine {
+  if (!tl) return { supertypes: [], types: [], subtypes: [] };
+  if (typeof tl === "string") return parseTypeLine(tl);
+  return tl;
+}
 
 function numberToRoman(n: number): string {
   switch (n) {
@@ -48,14 +144,13 @@ function capitalize(s: string): string {
 /** Infer which structured ability editor to show */
 type StructuredKind = "planeswalker" | "saga" | "class" | "leveler" | "case" | "prototype" | "mutate" | null;
 
-function detectStructuredKind(types: Type[], subtypes: string, template: TemplateName | ""): StructuredKind {
-  if (template === "planeswalker" || template === "planeswalker_tall" || types.includes("planeswalker")) return "planeswalker";
+function detectStructuredKind(types: Type[], subtypes: string, template: FaceTemplate): StructuredKind {
+  if (template === "planeswalker" || types.includes("planeswalker")) return "planeswalker";
   if (template === "saga") return "saga";
   if (template === "class") return "class";
   if (template === "leveler") return "leveler";
   if (template === "prototype") return "prototype";
   if (template === "mutate") return "mutate";
-  // Infer from subtypes
   const st = subtypes.toLowerCase();
   if (st.includes("saga")) return "saga";
   if (st.includes("class")) return "class";
@@ -63,10 +158,6 @@ function detectStructuredKind(types: Type[], subtypes: string, template: Templat
   return null;
 }
 
-/** Does this link type need a linked card editor? */
-function linkTypeNeedsLinkedCard(lt: LinkType | ""): boolean {
-  return !!lt;
-}
 
 /** Extract plain abilities text from CardData.abilities */
 function extractAbilitiesText(abilities: CardData["abilities"]): string {
@@ -80,34 +171,38 @@ function extractAbilitiesText(abilities: CardData["abilities"]): string {
   if (sa) {
     switch (sa.kind) {
       case "planeswalker":
-        for (const a of sa.loyaltyAbilities) parts.push(a.cost ? `${a.cost}: ${a.text}` : a.text);
+        for (const a of sa.loyaltyAbilities ?? []) parts.push(a.cost ? `${a.cost}: ${a.text}` : a.text);
         break;
       case "saga":
-        for (const ch of sa.chapters) {
+        for (const ch of sa.chapters ?? []) {
           const nums = ch.chapterNumbers.map(numberToRoman).join(", ");
           parts.push(`${nums} \u2014 ${ch.text}`);
         }
         break;
       case "class":
-        for (const lv of sa.classLevels) {
+        for (const lv of sa.classLevels ?? []) {
           if (lv.cost) parts.push(`${lv.cost}: Level ${lv.level}`);
           if (lv.text) parts.push(lv.text);
         }
         break;
       case "leveler":
-        for (const lv of sa.creatureLevels) {
+        for (const lv of sa.creatureLevels ?? []) {
           parts.push(`Level ${lv.level.join("-")}: ${lv.rulesText} (${lv.power}/${lv.toughness})`);
         }
         break;
       case "case":
-        parts.push(`To solve: ${sa.caseConditions.toSolve}`);
-        parts.push(`Solved: ${sa.caseConditions.solved}`);
+        if (sa.caseConditions) {
+          parts.push(`To solve: ${sa.caseConditions.toSolve}`);
+          parts.push(`Solved: ${sa.caseConditions.solved}`);
+        }
         break;
       case "prototype":
-        parts.push(`Prototype ${sa.prototype.manaCost} \u2014 ${sa.prototype.power}/${sa.prototype.toughness}`);
+        if (sa.prototype) {
+          parts.push(`Prototype ${sa.prototype.manaCost} \u2014 ${sa.prototype.power}/${sa.prototype.toughness}`);
+        }
         break;
       case "mutate":
-        parts.push(`Mutate ${sa.mutateCost}`);
+        if (sa.mutateCost) parts.push(`Mutate ${sa.mutateCost}`);
         break;
     }
   }
@@ -393,6 +488,7 @@ interface LinkedFormState {
   manaCost: string;
   types: Type[];
   subtypes: string;
+  faceTemplate: FaceTemplate;
   abilitiesText: string;
   power: string;
   toughness: string;
@@ -403,11 +499,13 @@ interface LinkedFormState {
 }
 
 function initLinkedForm(cd?: CardData): LinkedFormState {
+  const parsed = resolveTypeLine(cd?.typeLine);
   return {
     name: cd?.name ?? "",
     manaCost: cd?.manaCost ?? "",
-    types: cd?.types ?? [],
-    subtypes: (cd?.subtypes ?? []).join(" "),
+    types: parsed.types,
+    subtypes: parsed.subtypes.join(" "),
+    faceTemplate: cd ? inferFaceTemplate(cd) : "",
     abilitiesText: extractAbilitiesText(cd?.abilities),
     power: cd?.power ?? "",
     toughness: cd?.toughness ?? "",
@@ -427,7 +525,7 @@ function LinkedCardEditor({ form, onChange, loading }: { form: LinkedFormState; 
 
   return (
     <div className="space-y-4 p-3 border border-neutral-700 rounded-lg bg-neutral-900/50">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-neutral-400 mb-1">Name</label>
           <input className="input" value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Back face name" disabled={loading} />
@@ -435,6 +533,12 @@ function LinkedCardEditor({ form, onChange, loading }: { form: LinkedFormState; 
         <div>
           <label className="block text-xs font-medium text-neutral-400 mb-1">Mana Cost</label>
           <input className="input font-mono" value={form.manaCost} onChange={(e) => setField("manaCost", e.target.value)} placeholder="{2}{R}" disabled={loading} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-400 mb-1">Face Template</label>
+          <select className="input" value={form.faceTemplate} onChange={(e) => setField("faceTemplate", e.target.value as FaceTemplate)} disabled={loading}>
+            {FACE_TEMPLATES.map(({ label, value }) => <option key={value} value={value}>{label}</option>)}
+          </select>
         </div>
       </div>
       <div>
@@ -505,8 +609,10 @@ interface FormState {
   flavorText: string;
   artDescription: string;
   artUrl: string;
+  // Layout & template
+  layout: Layout;
+  faceTemplate: FaceTemplate;
   // Visual overrides
-  cardTemplate: TemplateName | "";
   frameColor: FrameColor | "";
   accentColor: AccentColor | "";
   frameEffect: FrameEffect | "";
@@ -515,8 +621,6 @@ interface FormState {
   nameLineColor: FrameColor | "";
   typeLineColor: FrameColor | "";
   ptBoxColor: FrameColor | "";
-  // Link
-  linkType: LinkType | "";
   // Metadata
   artist: string;
   setCode: string;
@@ -532,8 +636,8 @@ function linkedFormToCardData(linked: LinkedFormState): CardData {
   const cd: CardData = {
     name: linked.name || undefined,
     manaCost: linked.manaCost || undefined,
-    types: linked.types.length ? linked.types : undefined,
-    subtypes: subtypes.length ? subtypes : undefined,
+    typeLine: { supertypes: [], types: linked.types, subtypes },
+    cardTemplate: linked.faceTemplate ? linked.faceTemplate as TemplateName : undefined,
     abilities: linked.abilitiesText.trim() || undefined,
     power: isCreature && linked.power ? linked.power : undefined,
     toughness: isCreature && linked.toughness ? linked.toughness : undefined,
@@ -545,20 +649,20 @@ function linkedFormToCardData(linked: LinkedFormState): CardData {
   return cd;
 }
 
-function buildCardData(form: FormState, linkedForm?: LinkedFormState): CardData {
+function buildCardData(form: FormState, linkedForm?: LinkedFormState, abilities?: CardData["abilities"]): CardData {
   const subtypes = form.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
   const isCreature = form.types.includes("creature");
   const isPw = form.types.includes("planeswalker");
   const isBattle = form.types.includes("battle");
+  const linkType = LAYOUT_TO_LINK_TYPE[form.layout];
+  const hasLinked = !!linkType;
 
   const cd: CardData = {
     name: form.name || undefined,
     manaCost: form.manaCost || undefined,
-    supertypes: form.supertypes.length ? form.supertypes : undefined,
-    types: form.types.length ? form.types : undefined,
-    subtypes: subtypes.length ? subtypes : undefined,
+    typeLine: { supertypes: form.supertypes, types: form.types, subtypes },
     rarity: form.rarity || undefined,
-    abilities: form.abilitiesText.trim() || undefined,
+    abilities: abilities || form.abilitiesText.trim() || undefined,
     power: isCreature && form.power ? form.power : undefined,
     toughness: isCreature && form.toughness ? form.toughness : undefined,
     startingLoyalty: isPw && form.startingLoyalty ? form.startingLoyalty : undefined,
@@ -566,8 +670,8 @@ function buildCardData(form: FormState, linkedForm?: LinkedFormState): CardData 
     flavorText: form.flavorText || undefined,
     artDescription: form.artDescription || undefined,
     artUrl: form.artUrl || undefined,
-    // Visual overrides — only include when explicitly set
-    cardTemplate: form.cardTemplate || undefined,
+    // Template resolved from layout + face template
+    cardTemplate: resolveFormTemplate(form.layout, form.faceTemplate),
     frameColor: form.frameColor || undefined,
     accentColor: form.accentColor || undefined,
     frameEffect: form.frameEffect || undefined,
@@ -576,9 +680,9 @@ function buildCardData(form: FormState, linkedForm?: LinkedFormState): CardData 
     nameLineColor: form.nameLineColor || undefined,
     typeLineColor: form.typeLineColor || undefined,
     ptBoxColor: form.ptBoxColor || undefined,
-    // Link
-    linkType: form.linkType || undefined,
-    linkedCard: linkedForm && form.linkType ? linkedFormToCardData(linkedForm) : undefined,
+    // Link — derived from layout
+    linkType: linkType,
+    linkedCard: hasLinked && linkedForm ? linkedFormToCardData(linkedForm) : undefined,
     // Metadata
     artist: form.artist || undefined,
     setCode: form.setCode || undefined,
@@ -605,9 +709,9 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
   const [form, setForm] = useState<FormState>(() => ({
     name: cd.name ?? "",
     manaCost: cd.manaCost ?? "",
-    supertypes: cd.supertypes ?? [],
-    types: cd.types ?? [],
-    subtypes: (cd.subtypes ?? []).join(" "),
+    supertypes: resolveTypeLine(cd.typeLine).supertypes,
+    types: resolveTypeLine(cd.typeLine).types,
+    subtypes: resolveTypeLine(cd.typeLine).subtypes.join(" "),
     rarity: cd.rarity ?? "common",
     abilitiesText: extractAbilitiesText(cd.abilities),
     power: cd.power ?? "",
@@ -617,7 +721,8 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
     flavorText: cd.flavorText ?? "",
     artDescription: cd.artDescription ?? "",
     artUrl: cd.artUrl ?? "",
-    cardTemplate: cd.cardTemplate ?? "",
+    layout: inferLayout(cd),
+    faceTemplate: inferFaceTemplate(cd),
     frameColor: (Array.isArray(cd.frameColor) ? cd.frameColor[0] : cd.frameColor) ?? "",
     accentColor: (Array.isArray(cd.accentColor) ? cd.accentColor[0] : cd.accentColor) ?? "",
     frameEffect: (Array.isArray(cd.frameEffect) ? cd.frameEffect[0] : cd.frameEffect) ?? "",
@@ -626,7 +731,6 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
     nameLineColor: (Array.isArray(cd.nameLineColor) ? cd.nameLineColor[0] : cd.nameLineColor) ?? "",
     typeLineColor: (Array.isArray(cd.typeLineColor) ? cd.typeLineColor[0] : cd.typeLineColor) ?? "",
     ptBoxColor: (Array.isArray(cd.ptBoxColor) ? cd.ptBoxColor[0] : cd.ptBoxColor) ?? "",
-    linkType: cd.linkType ?? "",
     artist: cd.artist ?? "",
     setCode: cd.setCode ?? "",
     collectorNumber: cd.collectorNumber ?? "",
@@ -638,8 +742,8 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
   // Structured editor state
   const [useStructuredEditor, setUseStructuredEditor] = useState(false);
   const structuredKind = useMemo(
-    () => detectStructuredKind(form.types, form.subtypes, form.cardTemplate),
-    [form.types, form.subtypes, form.cardTemplate],
+    () => detectStructuredKind(form.types, form.subtypes, form.faceTemplate),
+    [form.types, form.subtypes, form.faceTemplate],
   );
 
   const [pwAbilities, setPwAbilities] = useState<PlaneswalkerAbility[]>(() =>
@@ -733,11 +837,34 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
     }));
   };
 
-  const hasLinkedCard = linkTypeNeedsLinkedCard(form.linkType);
+  const hasLinkedCard = form.layout !== "single";
+
+  // Build structured ParsedAbilities when using structured editor, otherwise use text string
+  const resolvedAbilities = useMemo((): CardData["abilities"] => {
+    if (!useStructuredEditor || !structuredKind) return form.abilitiesText.trim() || undefined;
+    switch (structuredKind) {
+      case "planeswalker":
+        return { structuredAbilities: { kind: "planeswalker", loyaltyAbilities: pwAbilities } };
+      case "saga":
+        return { structuredAbilities: { kind: "saga", chapters: sagaChapters } };
+      case "class":
+        return { structuredAbilities: { kind: "class", classLevels: classLevels } };
+      case "leveler":
+        return { structuredAbilities: { kind: "leveler", creatureLevels: levelerLevels.map((lv) => ({ level: [parseInt(lv.levelLo) || 0, parseInt(lv.levelHi) || 0], rulesText: lv.rulesText, power: lv.power, toughness: lv.toughness })) } };
+      case "case":
+        return { structuredAbilities: { kind: "case", caseConditions: caseState } };
+      case "prototype":
+        return { structuredAbilities: { kind: "prototype", prototype: prototypeState } };
+      case "mutate":
+        return { structuredAbilities: { kind: "mutate", mutateCost: mutateCost } };
+      default:
+        return form.abilitiesText.trim() || undefined;
+    }
+  }, [useStructuredEditor, structuredKind, form.abilitiesText, pwAbilities, sagaChapters, classLevels, levelerLevels, caseState, prototypeState, mutateCost]);
 
   const cardData = useMemo(
-    () => buildCardData(form, hasLinkedCard ? linkedForm : undefined),
-    [form, linkedForm, hasLinkedCard],
+    () => buildCardData(form, hasLinkedCard ? linkedForm : undefined, resolvedAbilities),
+    [form, linkedForm, hasLinkedCard, resolvedAbilities],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -796,13 +923,18 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
         <input className="input" value={form.subtypes} onChange={(e) => setField("subtypes", e.target.value)} placeholder="Human Wizard" disabled={loading} />
       </div>
 
-      {/* Template & Rarity */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Layout, Face Template & Rarity */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Card Template</label>
-          <select className="input" value={form.cardTemplate} onChange={(e) => setField("cardTemplate", e.target.value as TemplateName | "")} disabled={loading}>
-            <option value="">Auto-detect</option>
-            {TEMPLATE_NAMES.map((t) => <option key={t} value={t}>{t}</option>)}
+          <label className="block text-sm font-medium text-neutral-300 mb-1">Layout</label>
+          <select className="input" value={form.layout} onChange={(e) => setField("layout", e.target.value as Layout)} disabled={loading}>
+            {LAYOUT_OPTIONS.map(({ label, value }) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-300 mb-1">Face Template</label>
+          <select className="input" value={form.faceTemplate} onChange={(e) => setField("faceTemplate", e.target.value as FaceTemplate)} disabled={loading}>
+            {FACE_TEMPLATES.map(({ label, value }) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
         <div>
@@ -889,24 +1021,17 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
         <input className="input" value={form.artUrl} onChange={(e) => setField("artUrl", e.target.value)} placeholder="https://..." disabled={loading} />
       </div>
 
-      {/* Linked Card */}
-      <details className="border border-neutral-800 rounded-lg" open={hasLinkedCard}>
-        <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
-          Linked Card {form.linkType ? `(${form.linkType})` : ""}
-        </summary>
-        <div className="px-4 pb-4 pt-2 space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-300 mb-1">Link Type</label>
-            <select className="input" value={form.linkType} onChange={(e) => setField("linkType", e.target.value as LinkType | "")} disabled={loading}>
-              <option value="">None</option>
-              {LINK_TYPES.map((lt) => <option key={lt} value={lt}>{lt}</option>)}
-            </select>
-          </div>
-          {hasLinkedCard && (
+      {/* Linked Card — shown when layout has multiple faces */}
+      {hasLinkedCard && (
+        <details className="border border-neutral-800 rounded-lg" open>
+          <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
+            {form.layout === "adventure" ? "Adventure Spell" : "Back Face"} ({form.layout})
+          </summary>
+          <div className="px-4 pb-4 pt-2 space-y-3">
             <LinkedCardEditor form={linkedForm} onChange={setLinkedForm} loading={loading} />
-          )}
-        </div>
-      </details>
+          </div>
+        </details>
+      )}
 
       {/* Visual Overrides */}
       <details className="border border-neutral-800 rounded-lg">

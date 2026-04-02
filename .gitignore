@@ -8,3 +8,4 @@ frontend/node_modules
 .aws-sam
 *.js.map
 *.d.ts.map
+.playwright-mcp

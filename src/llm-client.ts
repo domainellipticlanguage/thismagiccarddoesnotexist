@@ -1,11 +1,12 @@
 import OpenAI from "openai";
+import type { CardData, LinkType, Rarity, Color } from "@domainellipticlanguage/mtg-crucible";
 import type { LLMCardResponse } from "./types.js";
 
 let _cached: { client: OpenAI; model: string } | undefined;
 
 function getClient(): { client: OpenAI; model: string } {
   if (_cached) return _cached;
-  
+
   const provider = (process.env.LLM_PROVIDER || "groq").toLowerCase();
   if (provider === "cerebras") {
     _cached = {
@@ -27,45 +28,142 @@ function getClient(): { client: OpenAI; model: string } {
   return _cached;
 }
 
-const SYSTEM_PROMPT = `You design Magic: The Gathering cards. You output card designs in a text spoiler format.
+// ---------------------------------------------------------------------------
+// Tool definition
+// ---------------------------------------------------------------------------
 
-OUTPUT FORMAT — respond with a JSON object containing these fields:
-- card_text (string, required): The card in the text format described below
-- explanation (string, required): Brief explanation of how the card fulfills the request
-- suggestion_artwork (string, required): A short, specific suggestion for a fine-grained art edit
-- suggestion_mechanics (string, required): A short, specific suggestion for a gameplay/mechanics change
-- art_edit_mode (string, optional): For edit mode only — "keep", "edit", or "regenerate"
+const CARD_SCHEMA: OpenAI.FunctionParameters = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "Card name" },
+    manaCost: {
+      type: "string",
+      description: "Mana cost using {W},{U},{B},{R},{G},{C},{1},{2},{X} etc. Hybrid: {W/U}. Phyrexian: {G/P}. Lands have no mana cost.",
+    },
+    typeLine: {
+      type: "string",
+      description: "Full type line, e.g. 'Legendary Creature — Human Wizard', 'Enchantment — Saga', 'Instant'",
+    },
+    abilities: { type: "string", description: "Rules text. One ability per line. For planeswalkers: '+1: text' format. For sagas: 'I — text' format." },
+    flavorText: { type: "string", description: "Flavor text (optional)" },
+    artDescription: { type: "string", description: "Vivid description of the card art to generate" },
+    rarity: { type: "string", enum: ["common", "uncommon", "rare", "mythic"] },
+    colorIndicator: {
+      type: "string",
+      description: "Color indicator as color letters, e.g. 'G' for green, 'UB' for blue-black. Only needed for cards with no mana cost that need a color identity (e.g. transform back faces).",
+    },
+    power: { type: "string", description: "Power (creatures only)" },
+    toughness: { type: "string", description: "Toughness (creatures only)" },
+    startingLoyalty: { type: "string", description: "Starting loyalty (planeswalkers only)" },
+    battleDefense: { type: "string", description: "Defense value (battles only)" },
+  },
+  required: ["name", "typeLine", "abilities", "artDescription", "rarity"],
+};
 
-TEXT FORMAT for card_text:
+const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "design_card",
+    description: "Design a Magic: The Gathering card",
+    parameters: {
+      type: "object",
+      properties: {
+        card: CARD_SCHEMA,
+        linkedCard: {
+          ...CARD_SCHEMA,
+          description: "Second face/half of the card (for transform, adventure, modal DFC, split, etc.)",
+        },
+        linkType: {
+          type: "string",
+          enum: ["transform", "modal_dfc", "adventure", "flip", "split", "fuse", "aftermath"],
+          description: "Relationship between card and linkedCard. Only set if linkedCard is provided.",
+        },
+        explanation: { type: "string", description: "Brief explanation of the design" },
+        suggestionArtwork: { type: "string", description: "A specific suggestion for an art edit" },
+        suggestionMechanics: { type: "string", description: "A specific suggestion for a mechanics change" },
+        artEditMode: {
+          type: "string",
+          enum: ["keep", "edit", "regenerate"],
+          description: "For edit mode only: keep existing art, edit it, or regenerate from scratch",
+        },
+      },
+      required: ["card", "explanation", "suggestionArtwork", "suggestionMechanics"],
+    },
+  },
+};
 
-Line 1: Card Name {Mana Cost}
-  Example: Lightning Bolt {R}
-  Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X
-  Hybrid: {W/U}, Phyrexian: {G/P}
-  Lands have no mana cost.
+// ---------------------------------------------------------------------------
+// Parse tool call result into CardData
+// ---------------------------------------------------------------------------
 
-Then metadata lines (optional, one per line):
-  Rarity: common | uncommon | rare | mythic
-  Art Description: A vivid description of the card art to generate
-  Flavor Text: The flavor text
+const COLOR_MAP: Record<string, Color> = {
+  W: "white", U: "blue", B: "black", R: "red", G: "green",
+  w: "white", u: "blue", b: "black", r: "red", g: "green",
+};
 
-Then the type line:
-  Examples: Legendary Creature — Human Wizard
-           Enchantment — Saga
-           Instant
+function parseColorIndicator(ci: string | undefined): Color[] | undefined {
+  if (!ci) return undefined;
+  const colors = ci.split("").map((c) => COLOR_MAP[c]).filter(Boolean) as Color[];
+  return colors.length ? colors : undefined;
+}
 
-Then abilities/rules text (one ability per line):
-  For Planeswalkers: +1: ability / -2: ability / -7: ultimate
-  For Sagas: I — text / II — text / III — text
+interface LLMCard {
+  name: string;
+  manaCost?: string;
+  typeLine: string;
+  abilities: string;
+  flavorText?: string;
+  artDescription: string;
+  rarity: string;
+  colorIndicator?: string;
+  power?: string;
+  toughness?: string;
+  startingLoyalty?: string;
+  battleDefense?: string;
+}
 
-Then P/T on its own line for creatures: 3/4
+function llmCardToCardData(card: LLMCard, linkType?: string, linkedCard?: LLMCard): CardData {
+  const cardData: CardData = {
+    name: card.name,
+    manaCost: card.manaCost || undefined,
+    typeLine: card.typeLine,
+    rarity: card.rarity as Rarity,
+    abilities: card.abilities || undefined,
+    flavorText: card.flavorText || undefined,
+    artDescription: card.artDescription,
+    colorIndicator: parseColorIndicator(card.colorIndicator),
+    power: card.power || undefined,
+    toughness: card.toughness || undefined,
+    startingLoyalty: card.startingLoyalty || undefined,
+    battleDefense: card.battleDefense || undefined,
+    linkType: linkType as LinkType | undefined,
+    linkedCard: linkedCard ? llmCardToCardData(linkedCard) : undefined,
+  };
 
-IMPORTANT:
-- ALWAYS include "Art Description:" with a vivid description
-- ALWAYS include "Rarity:"
-- For Planeswalkers, include "Loyalty: N" after the type line
-- For Battles, include "Defense: N"
-- Do NOT wrap card_text in backticks or code blocks`;
+  return cardData;
+}
+
+// ---------------------------------------------------------------------------
+// System prompt
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Use the design_card tool to create cards.
+
+Key rules:
+- Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X. Hybrid: {W/U}. Phyrexian: {G/P}
+- Lands have no manaCost
+- typeLine should be a full type line like "Legendary Creature — Human Wizard" or "Instant"
+- abilities: one ability per line. Planeswalkers use "+1: text" format. Sagas use "I — text" format.
+- ALWAYS provide a vivid artDescription
+- For creatures, include power and toughness
+- For planeswalkers, include startingLoyalty
+- For battles, include battleDefense
+- Only use colorIndicator for cards that need a color identity but have no mana cost (e.g. transform back faces)
+- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.`;
+
+// ---------------------------------------------------------------------------
+// Build messages
+// ---------------------------------------------------------------------------
 
 function buildMessages(
   prompt: string,
@@ -85,11 +183,9 @@ function buildMessages(
     return [
       {
         role: "system",
-        content:
-          SYSTEM_PROMPT +
-          `\n\nWhen editing, also include art_edit_mode in your JSON response:
+        content: SYSTEM_PROMPT + `\n\nWhen editing, also set artEditMode:
 - "keep" — keep the existing art unchanged (default if art is not mentioned)
-- "edit" — make fine-tuned edits to the existing art. Put ONLY the delta/changes in Art Description.
+- "edit" — make fine-tuned edits to the existing art. Put ONLY the delta/changes in artDescription.
 - "regenerate" — generate completely new art from scratch`,
       },
       {
@@ -103,6 +199,10 @@ function buildMessages(
     { role: "user", content: `Create a Magic: The Gathering card: ${prompt}` },
   ];
 }
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
 
 export async function createCard(
   prompt: string,
@@ -123,21 +223,30 @@ export async function createCard(
       const response = await client.chat.completions.create({
         model,
         messages,
-        response_format: { type: "json_object" },
+        tools: [DESIGN_CARD_TOOL],
+        tool_choice: { type: "function", function: { name: "design_card" } },
       });
 
       console.log(`[LLM] Response in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) throw new Error("Empty LLM response");
+      const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+      if (!toolCall || toolCall.function.name !== "design_card") {
+        throw new Error("LLM did not call design_card tool");
+      }
 
-      const data = JSON.parse(content) as LLMCardResponse;
-      if (!data.card_text) throw new Error("Missing card_text in response");
-      if (!data.explanation) data.explanation = "";
-      if (!data.suggestion_artwork) data.suggestion_artwork = "";
-      if (!data.suggestion_mechanics) data.suggestion_mechanics = "";
+      const args = JSON.parse(toolCall.function.arguments);
+      const card: LLMCard = args.card;
+      if (!card?.name) throw new Error("Missing card name in tool call");
 
-      return data;
+      const cardData = llmCardToCardData(card, args.linkType, args.linkedCard);
+
+      return {
+        cardData,
+        explanation: args.explanation || "",
+        suggestion_artwork: args.suggestionArtwork || "",
+        suggestion_mechanics: args.suggestionMechanics || "",
+        art_edit_mode: args.artEditMode,
+      };
     } catch (err: any) {
       lastError = err;
       console.error(`[LLM] Attempt ${attempt + 1} failed:`, err.message);

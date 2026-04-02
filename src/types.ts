@@ -70,7 +70,7 @@ export interface EditCardFieldsRequest {
 }
 
 export interface LLMCardResponse {
-  card_text: string;
+  cardData: CardData;
   explanation: string;
   suggestion_artwork: string;
   suggestion_mechanics: string;

@@ -24,7 +24,7 @@ export function getArtDimensionsFromText(crucibleText: string): {
 } {
   const cardData = parseCard(crucibleText);
   const dims = getArtDimensions(cardData);
-  return { width: dims.width, height: dims.height, cardData };
+  return { width: dims.primaryArtDimensions.width, height: dims.primaryArtDimensions.height, cardData };
 }
 
 export interface RenderResult {

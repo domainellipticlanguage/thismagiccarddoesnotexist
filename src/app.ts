@@ -1,6 +1,8 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { parseTypeLine } from "@domainellipticlanguage/mtg-crucible";
+import type { CardData } from "@domainellipticlanguage/mtg-crucible";
 import {
   getCard,
   getLatestCards,
@@ -11,6 +13,7 @@ import { buildDisplay } from "./card-renderer.js";
 import type {
   CreateCardRequest,
   EditCardFieldsRequest,
+  CardDocument,
   CardResponse,
   CardsResponse,
 } from "./types.js";
