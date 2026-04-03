@@ -85,6 +85,8 @@ function inferLayout(cd: CardData): Layout {
     };
     if (map[t]) return map[t]!;
   }
+  // Fallback: if linkedCard exists but no linkType/cardTemplate, default to split
+  if (cd.linkedCard) return "split";
   return "single";
 }
 

@@ -4,8 +4,8 @@ import type { CardData, MtgCardDisplayData, Rotation } from "@domainellipticlang
 // Art directives — per-face art generation instructions
 // ---------------------------------------------------------------------------
 
-/** Which existing face's art to reference. Always from the original (pre-edit) card. */
-export type ArtReference = "primary_old" | "secondary_old";
+/** Which art to reference: _old = from the original card, _new = from the newly generated face. */
+export type ArtReference = "primary_old" | "secondary_old" | "primary_new" | "secondary_new";
 
 /** How to generate art for a face. */
 export type FaceArtMode = "no_edit" | "fine_grained_edit" | "coarse_grained_edit";
@@ -23,35 +23,11 @@ export interface ArtDirectives {
   secondary?: FaceArtDirective;
 }
 
-/** A single row in DynamoDB — one face/sub-card of a card. */
-export interface CardRow {
-  id: string;
-  subCardIndex: number;
-  cardData: CardData;
-  renderedUrl: string;
-
-  // Only on subCardIndex 0:
-  crucibleText?: string;
-  scryfallText?: string;
-  scryfallJson?: string;
-  rotations?: Rotation[];
-  prompt?: string;
-  explanation?: string;
-  suggestionArtwork?: string;
-  suggestionMechanics?: string;
-  artDirectives?: ArtDirectives;
-  creatorId?: string;
-  parentId?: string;
-  createdDate?: string;
-  isDeleted?: boolean;
-  isFinished?: boolean;
-  isSuperseded?: boolean;
-}
-
-/** Assembled card with all faces, ready for API response. */
-export interface CardDocument {
+/** Single DynamoDB row — one card (all faces in cardData.linkedCard chain). */
+export interface CardRecord {
   id: string;
   cardData: CardData;
+  renderedUrls: string[];
   crucibleText: string;
   scryfallText: string;
   scryfallJson: string;
@@ -61,14 +37,18 @@ export interface CardDocument {
   suggestionArtwork: string;
   suggestionMechanics: string;
   artDirectives?: ArtDirectives;
+  llmCardData?: CardData;
   creatorId: string;
   parentId?: string;
   createdDate: string;
   isDeleted: boolean;
   isFinished: boolean;
   isSuperseded: boolean;
+}
+
+/** API-facing card document (CardRecord + optional display data). */
+export interface CardDocument extends CardRecord {
   display?: MtgCardDisplayData;
-  renderedUrls: string[];
 }
 
 export interface CardResponse {

@@ -89,7 +89,7 @@ const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
               type: "object",
               properties: {
                 mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"], description: "no_edit: use referenced art as-is. fine_grained_edit: edit referenced art with Flux Kontext (put ONLY the delta in artDescription). coarse_grained_edit: generate new art from scratch." },
-                reference: { type: "string", enum: ["primary_old", "secondary_old"], description: "Which face's existing art to use as source. Ignored for coarse_grained_edit." },
+                reference: { type: "string", enum: ["primary_old", "secondary_old", "primary_new", "secondary_new"], description: "Which art to use as source. _old = from original card, _new = from the newly generated face. Ignored for coarse_grained_edit. Invalid combos (circular deps, self-refs) fall back to coarse_grained_edit." },
               },
               required: ["mode"],
             },
@@ -97,7 +97,7 @@ const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
               type: "object",
               properties: {
                 mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"] },
-                reference: { type: "string", enum: ["primary_old", "secondary_old"] },
+                reference: { type: "string", enum: ["primary_old", "secondary_old", "primary_new", "secondary_new"] },
               },
               required: ["mode"],
             },
@@ -207,13 +207,18 @@ function buildMessages(
   - "no_edit" — use the referenced face's existing art as-is (default if art is not mentioned)
   - "fine_grained_edit" — make targeted edits to the referenced art. Put ONLY the delta/changes in artDescription.
   - "coarse_grained_edit" — generate completely new art from scratch
-- References: "primary_old" (first face's current art), "secondary_old" (second face's current art). Defaults to "primary_old".
+- References:
+  - "primary_old" / "secondary_old" — art from the original card's faces (available immediately)
+  - "primary_new" / "secondary_new" — art from the newly generated face (generates that face first, then uses it as input)
+  - Defaults to "primary_old" if omitted.
 - For single-face cards, only set primary. For multi-face, set both primary and secondary.
+- Invalid combos (self-refs like primary→primary_new, circular deps) are auto-corrected to coarse_grained_edit.
 - Examples:
   - Keep art: { primary: { mode: "no_edit" } }
   - Edit art: { primary: { mode: "fine_grained_edit" } }
   - Swap faces' art: { primary: { mode: "no_edit", reference: "secondary_old" }, secondary: { mode: "no_edit", reference: "primary_old" } }
-  - Face 2 themed from face 1: { primary: { mode: "coarse_grained_edit" }, secondary: { mode: "fine_grained_edit", reference: "primary_old" } }`,
+  - Face 2 themed from face 1's old art: { primary: { mode: "coarse_grained_edit" }, secondary: { mode: "fine_grained_edit", reference: "primary_old" } }
+  - Face 2 derived from face 1's NEW art: { primary: { mode: "coarse_grained_edit" }, secondary: { mode: "fine_grained_edit", reference: "primary_new" } }`,
       },
       {
         role: "user",
