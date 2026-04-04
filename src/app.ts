@@ -141,6 +141,95 @@ app.post("/api/cards", async (req, res) => {
   }
 });
 
+// --- Eval results API (dev only) ---
+
+import { readFileSync, readdirSync, existsSync } from "fs";
+
+const evalDir = path.resolve(__dirname, "..", "eval");
+
+app.get("/api/eval/results", (_req, res) => {
+  const f = path.join(evalDir, "results.json");
+  if (!existsSync(f)) return res.json([]);
+  res.json(JSON.parse(readFileSync(f, "utf-8")));
+});
+
+app.get("/api/eval/scores", (_req, res) => {
+  const f = path.join(evalDir, "scores.json");
+  if (!existsSync(f)) return res.json([]);
+  res.json(JSON.parse(readFileSync(f, "utf-8")));
+});
+
+app.get("/api/eval/system-prompts", (_req, res) => {
+  // Dynamic import won't work easily, just read the source and extract
+  const f = path.join(evalDir, "..", "src", "llm-client.ts");
+  if (!existsSync(f)) return res.json({});
+  const src = readFileSync(f, "utf-8");
+  const prompts: Record<string, string> = {};
+  const re = /(\w+):\s*`([\s\S]*?)`/g;
+  let m;
+  // Find the SYSTEM_PROMPTS object
+  const objMatch = src.match(/export const SYSTEM_PROMPTS\s*=\s*\{([\s\S]*?)\n\};/);
+  if (objMatch) {
+    while ((m = re.exec(objMatch[1])) !== null) {
+      prompts[m[1]] = m[2];
+    }
+  }
+  res.json(prompts);
+});
+
+app.get("/api/eval/prompts", (_req, res) => {
+  // Parse test metadata from prompts.ts
+  const f = path.join(evalDir, "prompts.ts");
+  if (!existsSync(f)) return res.json({});
+  const src = readFileSync(f, "utf-8");
+  const meta: Record<string, { prompt: string; mode: string; criteria: string; originalCardText?: string }> = {};
+  // Extract test cases using regex
+  const re = /id:\s*"([^"]+)"[\s\S]*?prompt:\s*"([\s\S]*?)"[\s\S]*?mode:\s*"([^"]+)"[\s\S]*?criteria:\s*"([\s\S]*?)"/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    meta[m[1]] = { prompt: m[2], mode: m[3], criteria: m[4] };
+  }
+  // Extract originalCardText references
+  const cardTexts: Record<string, string> = {};
+  const textRe = /const\s+(\w+)\s*=\s*`([\s\S]*?)`/g;
+  let tm;
+  while ((tm = textRe.exec(src)) !== null) {
+    cardTexts[tm[1]] = tm[2];
+  }
+  const refRe = /id:\s*"([^"]+)"[\s\S]*?originalCardText:\s*(\w+)/g;
+  let rm;
+  while ((rm = refRe.exec(src)) !== null) {
+    if (meta[rm[1]] && cardTexts[rm[2]]) {
+      meta[rm[1]].originalCardText = cardTexts[rm[2]];
+    }
+  }
+  res.json(meta);
+});
+
+app.get("/api/eval/judge-results", (_req, res) => {
+  const dir = path.join(evalDir, "judge_results");
+  if (!existsSync(dir)) return res.json({});
+  const out: Record<string, unknown> = {};
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+    out[file.replace(".json", "")] = JSON.parse(readFileSync(path.join(dir, file), "utf-8"));
+  }
+  res.json(out);
+});
+
+app.get("/api/eval/batches", (_req, res) => {
+  const dir = path.join(evalDir, "judge_batches");
+  if (!existsSync(dir)) return res.json({});
+  const out: Record<string, unknown> = {};
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("_"))) {
+    out[file.replace(".json", "")] = JSON.parse(readFileSync(path.join(dir, file), "utf-8"));
+  }
+  res.json(out);
+});
+
+app.get("/eval", (_req, res) => {
+  res.sendFile(path.join(evalDir, "index.html"));
+});
+
 // --- Static file serving (built React app) ---
 
 const staticDir = process.env.LAMBDA_TASK_ROOT

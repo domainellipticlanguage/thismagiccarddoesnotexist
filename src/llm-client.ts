@@ -1,30 +1,48 @@
 import OpenAI from "openai";
 import type { CardData, LinkType, Rarity, Color } from "@domainellipticlanguage/mtg-crucible";
-import type { LLMCardResponse } from "./types.js";
+import type { LLMCardResponse, ArtDirectives } from "./types.js";
 
-let _cached: { client: OpenAI; model: string } | undefined;
+// ---------------------------------------------------------------------------
+// Provider / client config
+// ---------------------------------------------------------------------------
 
-function getClient(): { client: OpenAI; model: string } {
-  if (_cached) return _cached;
+export interface LLMConfig {
+  provider: "groq" | "cerebras";
+  model: string;
+  apiKey: string;
+}
 
-  const provider = (process.env.LLM_PROVIDER || "groq").toLowerCase();
+function makeClient(config: LLMConfig): OpenAI {
+  const baseURL = config.provider === "cerebras"
+    ? "https://api.cerebras.ai/v1"
+    : "https://api.groq.com/openai/v1";
+  return new OpenAI({ apiKey: config.apiKey, baseURL });
+}
+
+/** Build config from environment variables (backwards-compatible). */
+export function configFromEnv(): LLMConfig {
+  const provider = (process.env.LLM_PROVIDER || "groq").toLowerCase() as "groq" | "cerebras";
   if (provider === "cerebras") {
-    _cached = {
-      client: new OpenAI({
-        apiKey: process.env.CEREBRAS_API_KEY,
-        baseURL: "https://api.cerebras.ai/v1",
-      }),
+    return {
+      provider,
       model: process.env.CEREBRAS_MODEL || "llama-3.3-70b",
-    };
-  } else {
-    _cached = {
-      client: new OpenAI({
-        apiKey: process.env.GROQ_API_KEY,
-        baseURL: "https://api.groq.com/openai/v1",
-      }),
-      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      apiKey: process.env.CEREBRAS_API_KEY || "",
     };
   }
+  return {
+    provider,
+    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    apiKey: process.env.GROQ_API_KEY || "",
+  };
+}
+
+// Cached default client for the server
+let _cached: { client: OpenAI; model: string } | undefined;
+
+function getDefaultClient(): { client: OpenAI; model: string } {
+  if (_cached) return _cached;
+  const config = configFromEnv();
+  _cached = { client: makeClient(config), model: config.model };
   return _cached;
 }
 
@@ -141,7 +159,7 @@ interface LLMCard {
 }
 
 function llmCardToCardData(card: LLMCard, linkType?: string, linkedCard?: LLMCard): CardData {
-  const cardData: CardData = {
+  return {
     name: card.name,
     manaCost: card.manaCost || undefined,
     typeLine: card.typeLine,
@@ -157,15 +175,14 @@ function llmCardToCardData(card: LLMCard, linkType?: string, linkedCard?: LLMCar
     linkType: linkType as LinkType | undefined,
     linkedCard: linkedCard ? llmCardToCardData(linkedCard) : undefined,
   };
-
-  return cardData;
 }
 
 // ---------------------------------------------------------------------------
-// System prompt
+// System prompts — exportable so eval can swap variants
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Use the design_card tool to create cards.
+export const SYSTEM_PROMPTS = {
+  concise: `You are a Magic: The Gathering card designer. Use the design_card tool to create cards.
 
 Key rules:
 - Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X. Hybrid: {W/U}. Phyrexian: {G/P}
@@ -177,7 +194,31 @@ Key rules:
 - For planeswalkers, include startingLoyalty
 - For battles, include battleDefense
 - Only use colorIndicator for cards that need a color identity but have no mana cost (e.g. transform back faces)
-- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.`;
+- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.`,
+
+  detailed: `You are an expert Magic: The Gathering card designer with deep knowledge of MTG history, color pie philosophy, and game balance. Use the design_card tool to create cards.
+
+Design philosophy:
+- Every card should feel like it belongs in a real MTG set. Consider limited environment, constructed playability, and flavor.
+- Respect the color pie strictly: white gets lifegain/exile/tokens/rules-setting; blue gets draw/counter/bounce/flying; black gets kill/drain/discard/recursion; red gets burn/haste/impulse/chaos; green gets big bodies/ramp/fight/trample.
+- Balance mana cost against power level. A 2-mana 3/3 with upside needs a drawback. A 6-mana creature needs to win the game.
+- Common cards should be simple (1-2 keywords). Uncommons can have one triggered/activated ability. Rares can be complex. Mythics should be splashy and memorable.
+
+Technical rules:
+- Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X. Hybrid: {W/U}. Phyrexian: {G/P}
+- Lands have no manaCost
+- typeLine: full type line like "Legendary Creature — Human Wizard", "Enchantment — Saga", "Instant"
+- abilities: one ability per line. Planeswalkers: "+1: text" format. Sagas: "I — text" format.
+- ALWAYS provide a vivid, specific artDescription that an AI image generator could use
+- For creatures: include power and toughness
+- For planeswalkers: include startingLoyalty (typically 3-6)
+- For battles: include battleDefense
+- colorIndicator: only for cards with no mana cost that need a color identity (e.g. transform back faces, aftermath back halves)
+- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.
+- Split card names use "X // Y" convention. Adventure names are usually a verb phrase.`,
+};
+
+const SYSTEM_PROMPT = SYSTEM_PROMPTS.concise;
 
 // ---------------------------------------------------------------------------
 // Build messages
@@ -233,7 +274,63 @@ function buildMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Main export
+// Core LLM call — takes explicit client+model, no env dependency
+// ---------------------------------------------------------------------------
+
+export interface LLMCallResult {
+  response: LLMCardResponse;
+  rawArgs: Record<string, unknown>;
+  latencyMs: number;
+}
+
+export async function callLLM(
+  client: OpenAI,
+  model: string,
+  prompt: string,
+  originalCardText?: string,
+  mode: string = "create",
+  systemPromptOverride?: string,
+): Promise<LLMCallResult> {
+  const messages = buildMessages(prompt, originalCardText, mode);
+  if (systemPromptOverride && messages[0]?.role === "system") {
+    messages[0] = { role: "system", content: systemPromptOverride };
+  }
+  const start = Date.now();
+
+  const response = await client.chat.completions.create({
+    model,
+    messages,
+    tools: [DESIGN_CARD_TOOL],
+    tool_choice: { type: "function", function: { name: "design_card" } },
+  });
+
+  const latencyMs = Date.now() - start;
+  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+  if (!toolCall || toolCall.function.name !== "design_card") {
+    throw new Error("LLM did not call design_card tool");
+  }
+
+  const args = JSON.parse(toolCall.function.arguments);
+  const card: LLMCard = args.card;
+  if (!card?.name) throw new Error("Missing card name in tool call");
+
+  const cardData = llmCardToCardData(card, args.linkType, args.linkedCard);
+
+  return {
+    response: {
+      cardData,
+      explanation: args.explanation || "",
+      suggestion_artwork: args.suggestionArtwork || "",
+      suggestion_mechanics: args.suggestionMechanics || "",
+      art_directives: args.artDirectives,
+    },
+    rawArgs: args,
+    latencyMs,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Server-facing export — uses env config, retries
 // ---------------------------------------------------------------------------
 
 export async function createCard(
@@ -241,8 +338,7 @@ export async function createCard(
   originalCardText?: string,
   mode: string = "create"
 ): Promise<LLMCardResponse> {
-  const { client, model } = getClient();
-  const messages = buildMessages(prompt, originalCardText, mode);
+  const { client, model } = getDefaultClient();
 
   const MAX_RETRIES = 3;
   let lastError: Error | undefined;
@@ -250,36 +346,10 @@ export async function createCard(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       console.log(`[LLM] Attempt ${attempt + 1}/${MAX_RETRIES} with ${model}`);
-      const start = Date.now();
-
-      const response = await client.chat.completions.create({
-        model,
-        messages,
-        tools: [DESIGN_CARD_TOOL],
-        tool_choice: { type: "function", function: { name: "design_card" } },
-      });
-
-      console.log(`[LLM] Response in ${((Date.now() - start) / 1000).toFixed(2)}s`);
-
-      const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-      if (!toolCall || toolCall.function.name !== "design_card") {
-        throw new Error("LLM did not call design_card tool");
-      }
-
-      const args = JSON.parse(toolCall.function.arguments);
-      console.log(`[LLM] Tool call args:\n${JSON.stringify(args, null, 2)}`);
-      const card: LLMCard = args.card;
-      if (!card?.name) throw new Error("Missing card name in tool call");
-
-      const cardData = llmCardToCardData(card, args.linkType, args.linkedCard);
-
-      return {
-        cardData,
-        explanation: args.explanation || "",
-        suggestion_artwork: args.suggestionArtwork || "",
-        suggestion_mechanics: args.suggestionMechanics || "",
-        art_directives: args.artDirectives,
-      };
+      const result = await callLLM(client, model, prompt, originalCardText, mode);
+      console.log(`[LLM] Response in ${(result.latencyMs / 1000).toFixed(2)}s`);
+      console.log(`[LLM] Tool call args:\n${JSON.stringify(result.rawArgs, null, 2)}`);
+      return result.response;
     } catch (err: any) {
       lastError = err;
       console.error(`[LLM] Attempt ${attempt + 1} failed:`, err.message);
