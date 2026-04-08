@@ -4,13 +4,13 @@ import {
   formatCard,
   getArtDimensions,
   toDisplayCard,
-} from "@domainellipticlanguage/mtg-crucible";
+} from "mtg-crucible";
 import type {
   CardData,
   RenderedCard,
   MtgCardDisplayData,
   Rotation,
-} from "@domainellipticlanguage/mtg-crucible";
+} from "mtg-crucible";
 import { v4 as uuid } from "uuid";
 import { uploadBuffer } from "./s3-storage.js";
 

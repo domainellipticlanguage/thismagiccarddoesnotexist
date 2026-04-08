@@ -1,18 +1,17 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseTypeLine } from "@domainellipticlanguage/mtg-crucible";
-import type { CardData } from "@domainellipticlanguage/mtg-crucible";
+import { parseTypeLine } from "mtg-crucible";
+import type { CardData } from "mtg-crucible";
 import {
   getCard,
   getLatestCards,
   softDeleteCard,
 } from "./card-table.js";
-import { generateCard, applyFieldEdits } from "./card-generator.js";
+import { generateCard } from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
 import type {
   CreateCardRequest,
-  EditCardFieldsRequest,
   CardDocument,
   CardResponse,
   CardsResponse,
@@ -104,21 +103,8 @@ app.delete("/api/cards/:id", async (req, res) => {
   }
 });
 
-app.post("/api/cards/:id/edit", async (req, res) => {
-  try {
-    const body = req.body as EditCardFieldsRequest;
-    if (!body.crucibleText && !body.cardData) {
-      return res.status(400).json({ error: "crucibleText or cardData is required" });
-    }
-
-    const creatorId = getCreatorId(req);
-    const newCard = await applyFieldEdits(req.params.id, creatorId, body.crucibleText, body.cardData);
-    res.json({ card_id: newCard.id });
-  } catch (err: any) {
-    console.error("[API] POST edit error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// MVP: advanced field editing disabled — AI edits only
+// app.post("/api/cards/:id/edit", async (req, res) => { ... });
 
 app.post("/api/cards", async (req, res) => {
   try {

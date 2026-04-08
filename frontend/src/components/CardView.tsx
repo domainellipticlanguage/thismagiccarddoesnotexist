@@ -1,5 +1,5 @@
 import { useNavigate, Link } from "react-router-dom";
-import { MtgCard } from "@domainellipticlanguage/mtg-crucible/react";
+import { MtgCard } from "mtg-crucible/react";
 import type { Card } from "../types/card";
 import { deleteCard } from "../api/client";
 
@@ -17,7 +17,7 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
     <div className="flex flex-col lg:flex-row gap-8">
       <div className="flex-shrink-0 w-full max-w-sm">
         {card.display ? (
-          <MtgCard card={card.display} style={{ width: "100%" }} />
+          <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />
         ) : (
           <div className="w-full aspect-[5/7] bg-neutral-800 rounded-lg flex items-center justify-center animate-pulse">
             <span className="text-neutral-500">Loading card... (display: {card.display === undefined ? 'undefined' : 'null'})</span>

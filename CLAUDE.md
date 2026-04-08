@@ -6,7 +6,7 @@ AI-powered Magic: The Gathering card generator.
 
 - **Backend**: Express.js + TypeScript, runs locally with `tsx watch`
 - **Frontend**: React 19 + Vite + Tailwind CSS v4
-- **Card Rendering**: `@domainellipticlanguage/mtg-crucible` (local link at `../mtg-crucible`)
+- **Card Rendering**: `mtg-crucible` (npm package)
 - **LLM**: Groq or Cerebras (OpenAI-compatible) for card design
 - **Art**: Replicate (PrunaAI P-Image for gen, FLUX Kontext Pro for editing)
 - **Deploy**: Serverless Framework → AWS Lambda + API Gateway

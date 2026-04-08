@@ -1,5 +1,5 @@
 // Re-export constant arrays and types from crucible (browser-safe constants sub-module)
-import type { CardData, MtgCardDisplayData } from "@domainellipticlanguage/mtg-crucible/parser";
+import type { CardData, MtgCardDisplayData } from "mtg-crucible/parser";
 export type { CardData, MtgCardDisplayData };
 
 export {
@@ -11,7 +11,7 @@ export {
   LINK_TYPES,
   COLORS,
   SUPERTYPES_LIST,
-} from "@domainellipticlanguage/mtg-crucible/parser";
+} from "mtg-crucible/parser";
 
 export interface Card {
   id: string;

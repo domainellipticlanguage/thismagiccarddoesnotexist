@@ -49,7 +49,7 @@ export default $config({
         IS_DEBUG: process.env.IS_DEBUG ?? "false",
       },
       nodejs: {
-        install: ["@napi-rs/canvas", "@napi-rs/canvas-linux-arm64-gnu", "@domainellipticlanguage/mtg-crucible"],
+        install: ["@napi-rs/canvas", "@napi-rs/canvas-linux-arm64-gnu", "mtg-crucible"],
       },
       copyFiles: [
         { from: "frontend/dist", to: "frontend/dist" },

@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   optimizeDeps: {
-    include: ["@domainellipticlanguage/mtg-crucible/react"],
+    include: ["mtg-crucible/react"],
   },
   build: {
     outDir: "dist",

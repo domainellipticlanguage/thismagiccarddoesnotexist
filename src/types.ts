@@ -1,29 +1,12 @@
-import type { CardData, MtgCardDisplayData, Rotation } from "@domainellipticlanguage/mtg-crucible";
+import type { CardData, MtgCardDisplayData, Rotation } from "mtg-crucible";
 
 // ---------------------------------------------------------------------------
-// Art directives — per-face art generation instructions
+// Art edit mode — MVP: single-face, simple keep/edit/regenerate
 // ---------------------------------------------------------------------------
 
-/** Which art to reference: _old = from the original card, _new = from the newly generated face. */
-export type ArtReference = "primary_old" | "secondary_old" | "primary_new" | "secondary_new";
+export type ArtEditMode = "keep" | "edit" | "regenerate";
 
-/** How to generate art for a face. */
-export type FaceArtMode = "no_edit" | "fine_grained_edit" | "coarse_grained_edit";
-
-/** Art instruction for a single face. */
-export interface FaceArtDirective {
-  mode: FaceArtMode;
-  /** Required for no_edit/fine_grained_edit. Ignored for coarse_grained_edit. Defaults to primary_old if omitted. */
-  reference?: ArtReference;
-}
-
-/** Per-face art directives. */
-export interface ArtDirectives {
-  primary: FaceArtDirective;
-  secondary?: FaceArtDirective;
-}
-
-/** Single DynamoDB row — one card (all faces in cardData.linkedCard chain). */
+/** Single DynamoDB row — one card. */
 export interface CardRecord {
   id: string;
   cardData: CardData;
@@ -34,9 +17,6 @@ export interface CardRecord {
   rotations: Rotation[];
   prompt: string;
   explanation: string;
-  suggestionArtwork: string;
-  suggestionMechanics: string;
-  artDirectives?: ArtDirectives;
   llmCardData?: CardData;
   creatorId: string;
   parentId?: string;
@@ -67,15 +47,8 @@ export interface CreateCardRequest {
   mode: "create" | "edit" | "copy";
 }
 
-export interface EditCardFieldsRequest {
-  crucibleText?: string;
-  cardData?: CardData;
-}
-
 export interface LLMCardResponse {
   cardData: CardData;
   explanation: string;
-  suggestion_artwork: string;
-  suggestion_mechanics: string;
-  art_directives?: ArtDirectives;
+  artEditMode?: ArtEditMode;
 }

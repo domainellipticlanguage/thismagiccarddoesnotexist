@@ -12,7 +12,7 @@ import {
   type Color,
   type LinkType,
   type ParsedTypeLine,
-} from "@domainellipticlanguage/mtg-crucible/parser";
+} from "mtg-crucible/parser";
 import {
   CARD_TYPES,
   RARITIES,
