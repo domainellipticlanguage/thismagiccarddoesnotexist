@@ -69,3 +69,6 @@ Uses Serverless Framework to deploy to AWS Lambda. Creates DynamoDB table and S3
 Improve LLM instructions.
 Let LLM know to leave art description blank if no changes.
 But tell it to regenerate full text format description..
+Add fine grained edit screen
+Allow uploading an image as a prompt for card generation
+Investigate `prunaai/p-image-edit` vs FLUX Kontext for art editing

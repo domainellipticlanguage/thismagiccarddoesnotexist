@@ -6,6 +6,7 @@ import { generateArt, editArt } from "./art-generator.js";
 import {
   parseCard,
   getArtDimensions,
+  normalizeCard,
   renderAndUpload,
 } from "./card-renderer.js";
 import {
@@ -22,7 +23,9 @@ async function handleArt(
 ): Promise<void> {
   if (cardData.artUrl) return; // already has art
 
-  const dims = getArtDimensions(cardData);
+  // Normalize first so getArtDimensions can detect saga/planeswalker/etc
+  // from string-form abilities. (TODO: crucible should normalize internally.)
+  const dims = getArtDimensions(normalizeCard(cardData));
   const { width, height } = dims.primaryArtDimensions;
   const mode = artEditMode ?? "regenerate";
   const originalArtUrl = originalCard?.cardData.artUrl;
@@ -84,6 +87,12 @@ export async function generateCard(
   // 2. CardData from LLM
   console.log("[Pipeline] 2. CardData");
   const cardData = llmResult.cardData;
+  cardData.artist = "prunaai/p-image";
+  cardData.designer = "thismagiccarddoesnotexist.com";
+  if (cardData.linkedCard) {
+    cardData.linkedCard.artist = "prunaai/p-image";
+    cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
+  }
   console.log("[Pipeline] Card:", cardData.name);
 
   // 3. Art

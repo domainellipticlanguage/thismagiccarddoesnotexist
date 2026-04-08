@@ -3,6 +3,7 @@ import {
   renderCard,
   formatCard,
   getArtDimensions,
+  normalizeCard,
   toDisplayCard,
 } from "mtg-crucible";
 import type {
@@ -14,7 +15,7 @@ import type {
 import { v4 as uuid } from "uuid";
 import { uploadBuffer } from "./s3-storage.js";
 
-export { parseCard, formatCard, getArtDimensions, toDisplayCard };
+export { parseCard, formatCard, getArtDimensions, normalizeCard, toDisplayCard };
 export type { CardData, RenderedCard, MtgCardDisplayData };
 
 export function getArtDimensionsFromText(crucibleText: string): {
