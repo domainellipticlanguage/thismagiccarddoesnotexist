@@ -105,6 +105,8 @@ function v2ToCardData(v2: V2Card): CardData {
     artDescription: v2.art_description || undefined,
     rarity: mapRarity(v2.rarity) as CardData["rarity"],
     artUrl: v2.art_url || undefined,
+    artist: "Dall-E 3",
+    designer: "thismagiccarddoesnotexist.com",
   };
 
   if (v2.power != null || v2.toughness != null) {
@@ -136,17 +138,17 @@ async function migrateCard(v2: V2Card, write: boolean): Promise<void> {
   let rotations: Rotation[] = [];
 
   try {
-    const rendered = await renderCard(cardData);
+    const rendered = await renderCard(cardData, { quality: "medium", format: "jpeg" });
     crucibleText = rendered.crucibleText;
     scryfallText = rendered.scryfallText;
     scryfallJson = rendered.scryfallJson;
     rotations = rendered.rotations;
 
     if (write) {
-      const frontKey = `rendered/${uuid()}.png`;
+      const frontKey = `rendered/${uuid()}.jpg`;
       renderedUrls.push(await uploadBuffer(rendered.frontFace, frontKey));
       if (rendered.backFace) {
-        const backKey = `rendered/${uuid()}-back.png`;
+        const backKey = `rendered/${uuid()}-back.jpg`;
         renderedUrls.push(await uploadBuffer(rendered.backFace, backKey));
       }
     } else {
