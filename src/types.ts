@@ -5,6 +5,10 @@ import type { CardData, MtgCardDisplayData, Rotation } from "mtg-crucible";
 // ---------------------------------------------------------------------------
 
 export type ArtEditMode = "keep" | "edit" | "regenerate";
+export type ArtReference = "primary_old" | "secondary_old" | "primary_new" | "secondary_new";
+export type FaceArtMode = "no_edit" | "fine_grained_edit" | "coarse_grained_edit";
+export interface FaceArtDirective { mode: FaceArtMode; reference?: ArtReference; }
+export interface ArtDirectives { primary: FaceArtDirective; secondary?: FaceArtDirective; }
 
 /** Single DynamoDB row — one card. */
 export interface CardRecord {
@@ -51,4 +55,7 @@ export interface LLMCardResponse {
   cardData: CardData;
   explanation: string;
   artEditMode?: ArtEditMode;
+  suggestion_artwork?: string;
+  suggestion_mechanics?: string;
+  art_directives?: ArtDirectives;
 }
