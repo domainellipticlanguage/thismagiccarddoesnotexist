@@ -7,7 +7,7 @@ import type { LLMCardResponse, ArtDirectives } from "./types.js";
 // ---------------------------------------------------------------------------
 
 export interface LLMConfig {
-  provider: "groq" | "cerebras" | "anthropic";
+  provider: "groq" | "cerebras" | "anthropic" | "friendli";
   model: string;
   apiKey: string;
 }
