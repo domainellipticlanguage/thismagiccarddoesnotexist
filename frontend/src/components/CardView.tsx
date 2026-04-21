@@ -35,28 +35,6 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
             <pre className="text-sm text-neutral-200 whitespace-pre-wrap font-mono">{card.crucibleText}</pre>
           </div>
         </details>
-        {card.explanation && (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-            <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Design Notes</h3>
-            <p className="text-sm text-neutral-300">{card.explanation}</p>
-          </div>
-        )}
-        {(card.suggestionArtwork || card.suggestionMechanics) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {card.suggestionArtwork && (
-              <Link to={`/card/${card.id}/edit`} state={{ suggestion: card.suggestionArtwork }} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 hover:border-gold-500/50 transition-colors">
-                <h4 className="text-xs uppercase tracking-wider text-neutral-500 mb-1">Art Suggestion</h4>
-                <p className="text-sm text-neutral-300">{card.suggestionArtwork}</p>
-              </Link>
-            )}
-            {card.suggestionMechanics && (
-              <Link to={`/card/${card.id}/edit`} state={{ suggestion: card.suggestionMechanics }} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 hover:border-gold-500/50 transition-colors">
-                <h4 className="text-xs uppercase tracking-wider text-neutral-500 mb-1">Mechanics Suggestion</h4>
-                <p className="text-sm text-neutral-300">{card.suggestionMechanics}</p>
-              </Link>
-            )}
-          </div>
-        )}
         {card.prompt && (
           <div>
             <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-1">Original Prompt</h3>

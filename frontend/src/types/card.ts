@@ -19,10 +19,6 @@ export interface Card {
   cardData: CardData;
   scryfallText: string;
   prompt: string;
-  explanation: string;
-  suggestionArtwork: string;
-  suggestionMechanics: string;
-  artDirectives?: { primary: { mode: string; reference?: string }; secondary?: { mode: string; reference?: string } }; // references: primary_old, secondary_old, primary_new, secondary_new
   renderedUrls: string[];
   display?: MtgCardDisplayData;
   creatorId: string;

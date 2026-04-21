@@ -1,14 +1,15 @@
 import type { CardData, MtgCardDisplayData, Rotation } from "mtg-crucible";
 
 // ---------------------------------------------------------------------------
-// Art edit mode — MVP: single-face, simple keep/edit/regenerate
+// Art directive — per-face instruction to the art pipeline
 // ---------------------------------------------------------------------------
 
-export type ArtEditMode = "keep" | "edit" | "regenerate";
-export type ArtReference = "primary_old" | "secondary_old" | "primary_new" | "secondary_new";
-export type FaceArtMode = "no_edit" | "fine_grained_edit" | "coarse_grained_edit";
-export interface FaceArtDirective { mode: FaceArtMode; reference?: ArtReference; }
-export interface ArtDirectives { primary: FaceArtDirective; secondary?: FaceArtDirective; }
+export type ArtDirective =
+  | "generate"       // generate new art from scratch
+  | "keep_self"      // use this face's existing art unchanged
+  | "keep_other"     // use the other face's existing art (swap case)
+  | "edit_self"      // Flux Kontext tweak of this face's existing art
+  | "edit_other";    // Flux Kontext tweak of the other face's art
 
 /** Single DynamoDB row — one card. */
 export interface CardRecord {
@@ -20,8 +21,6 @@ export interface CardRecord {
   scryfallJson: string;
   rotations: Rotation[];
   prompt: string;
-  explanation: string;
-  llmCardData?: CardData;
   creatorId: string;
   parentId?: string;
   createdDate: string;
@@ -53,9 +52,6 @@ export interface CreateCardRequest {
 
 export interface LLMCardResponse {
   cardData: CardData;
-  explanation: string;
-  artEditMode?: ArtEditMode;
-  suggestion_artwork?: string;
-  suggestion_mechanics?: string;
-  art_directives?: ArtDirectives;
+  /** Per-face art directives, 1 entry for single-face, 2 for multi-face. */
+  artDirectives: ArtDirective[];
 }

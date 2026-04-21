@@ -172,7 +172,6 @@ async function migrateCard(v2: V2Card, write: boolean): Promise<void> {
     scryfallJson,
     rotations,
     prompt: v2.prompt || "",
-    explanation: v2.explanation || "",
     creatorId: v2.creator_id || "",
     parentId: v2.parent_id || undefined,
     createdDate: v2.created_date || new Date().toISOString(),

@@ -1,10 +1,9 @@
 import { v4 as uuid } from "uuid";
-import type { CardDocument, CardRecord, ArtEditMode } from "./types.js";
+import type { CardDocument, CardRecord, ArtDirective } from "./types.js";
 import type { CardData } from "mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
 import { generateArt, editArt } from "./art-generator.js";
 import {
-  parseCard,
   getArtDimensions,
   normalizeCard,
   renderAndUpload,
@@ -15,45 +14,91 @@ import {
   markSuperseded,
 } from "./card-table.js";
 
-/** Generate or edit art for a single-face card based on art edit mode. */
-async function handleArt(
+/** Resolve art URL for a single face given its directive and the other face's context. */
+async function resolveFaceArt(
+  face: CardData,
+  directive: ArtDirective,
+  dims: { width: number; height: number } | undefined,
+  selfOriginalUrl: string | undefined,
+  otherOriginalUrl: string | undefined,
+  otherNewUrl: string | undefined,
+): Promise<string | undefined> {
+  if (!dims) return undefined; // single-art layout (e.g. Adventure); skip this face
+  const { width, height } = dims;
+  const desc = face.artDescription ?? "";
+
+  switch (directive) {
+    case "keep_self":
+      if (selfOriginalUrl) return selfOriginalUrl;
+      // fallthrough: nothing to keep, generate
+      return desc ? generateArt(desc, width, height) : undefined;
+    case "keep_other":
+      if (otherOriginalUrl) return otherOriginalUrl;
+      return desc ? generateArt(desc, width, height) : undefined;
+    case "edit_self":
+      return selfOriginalUrl && desc
+        ? editArt(desc, selfOriginalUrl, width, height)
+        : desc ? generateArt(desc, width, height) : undefined;
+    case "edit_other": {
+      const src = otherNewUrl ?? otherOriginalUrl;
+      return src && desc
+        ? editArt(desc, src, width, height)
+        : desc ? generateArt(desc, width, height) : undefined;
+    }
+    case "generate":
+    default:
+      return desc ? generateArt(desc, width, height) : undefined;
+  }
+}
+
+/** Generate art for all faces of the card, respecting per-face directives and dep ordering. */
+async function generateArtForAllFaces(
   cardData: CardData,
-  artEditMode: ArtEditMode | undefined,
+  artDirectives: ArtDirective[],
   originalCard: CardDocument | undefined,
 ): Promise<void> {
-  if (cardData.artUrl) return; // already has art
+  const normalized = normalizeCard(cardData);
+  const dims = getArtDimensions(normalized);
 
-  // Normalize first so getArtDimensions can detect saga/planeswalker/etc
-  // from string-form abilities. (TODO: crucible should normalize internally.)
-  const dims = getArtDimensions(normalizeCard(cardData));
-  const { width, height } = dims.primaryArtDimensions;
-  const mode = artEditMode ?? "regenerate";
-  const originalArtUrl = originalCard?.cardData.artUrl;
+  const faces = [cardData, cardData.linkedCard].filter((f): f is CardData => !!f);
+  const faceDims = [dims.primaryArtDimensions, dims.secondaryArtDimensions];
+  const originalFaces = [originalCard?.cardData, originalCard?.cardData.linkedCard];
+  const directives = faces.map((_, i) => artDirectives[i] ?? "generate");
 
-  console.log(`[Art] mode=${mode}, originalArt=${originalArtUrl ? "yes" : "no"}`);
+  const newUrls: (string | undefined)[] = new Array(faces.length).fill(undefined);
 
-  if (mode === "keep" && originalArtUrl) {
-    cardData.artUrl = originalArtUrl;
-    console.log(`[Art] Keeping existing art`);
-    return;
+  // Pass 1: resolve faces that don't depend on the other face's new art.
+  await Promise.all(
+    faces.map(async (face, i) => {
+      if (directives[i] === "edit_other") return;
+      newUrls[i] = await resolveFaceArt(
+        face,
+        directives[i],
+        faceDims[i],
+        originalFaces[i]?.artUrl,
+        originalFaces[1 - i]?.artUrl,
+        undefined,
+      );
+    })
+  );
+
+  // Pass 2: resolve edit_other faces (can now reference the other face's new URL).
+  for (let i = 0; i < faces.length; i++) {
+    if (directives[i] !== "edit_other") continue;
+    newUrls[i] = await resolveFaceArt(
+      faces[i],
+      directives[i],
+      faceDims[i],
+      originalFaces[i]?.artUrl,
+      originalFaces[1 - i]?.artUrl,
+      newUrls[1 - i],
+    );
   }
 
-  if (mode === "edit" && originalArtUrl && cardData.artDescription) {
-    console.log(`[Art] Fine-grained edit via Kontext (${width}x${height})`);
-    cardData.artUrl = await editArt(cardData.artDescription, originalArtUrl, width, height);
-    return;
-  }
-
-  if (mode === "edit" && !originalArtUrl) {
-    console.log(`[Art] Edit requested but no original art, falling back to generate`);
-  }
-
-  // regenerate or fallback
-  if (cardData.artDescription) {
-    console.log(`[Art] Generating new art (${width}x${height})`);
-    cardData.artUrl = await generateArt(cardData.artDescription, width, height);
-  } else {
-    console.log(`[Art] No artDescription, skipping art generation`);
+  // Apply
+  if (newUrls[0] && !cardData.artUrl) cardData.artUrl = newUrls[0];
+  if (newUrls[1] && cardData.linkedCard && !cardData.linkedCard.artUrl) {
+    cardData.linkedCard.artUrl = newUrls[1];
   }
 }
 
@@ -96,12 +141,11 @@ export async function generateCard(
   console.log("[Pipeline] Card:", cardData.name);
 
   // 3. Art
-  console.log("[Pipeline] 3. Art");
-  await handleArt(cardData, llmResult.artEditMode, originalCard);
+  console.log("[Pipeline] 3. Art", llmResult.artDirectives);
+  await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
   // 4. Render
   console.log("[Pipeline] 4. Render");
-  const llmCardData = structuredClone(cardData);
   const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
 
@@ -116,8 +160,6 @@ export async function generateCard(
     scryfallJson: rendered.scryfallJson,
     rotations,
     prompt: description,
-    explanation: llmResult.explanation,
-    llmCardData,
     creatorId,
     parentId: originalCardId,
     createdDate: new Date().toISOString(),

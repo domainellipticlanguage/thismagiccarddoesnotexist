@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { CardData, Rarity, Color } from "mtg-crucible";
-import type { LLMCardResponse, ArtDirectives } from "./types.js";
+import type { LLMCardResponse, ArtDirective } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Provider / client config
@@ -49,8 +49,7 @@ function getDefaultClient(): { client: OpenAI; model: string } {
 // Tool definition
 // ---------------------------------------------------------------------------
 
-const ART_DIRECTIVE_ENUM = ["generate", "keep_self", "keep_other", "edit_self", "edit_other"] as const;
-export type ArtDirective = typeof ART_DIRECTIVE_ENUM[number];
+const ART_DIRECTIVE_ENUM: ArtDirective[] = ["generate", "keep_self", "keep_other", "edit_self", "edit_other"];
 
 const CARD_SCHEMA: OpenAI.FunctionParameters = {
   type: "object",
@@ -61,23 +60,19 @@ const CARD_SCHEMA: OpenAI.FunctionParameters = {
     "startingLoyalty", "battleDefense",
   ],
   properties: {
-    name: { type: "string", description: "Card name" },
-    manaCost: { type: "string", description: "Mana cost like {1}{W}{U}. Empty string for lands and transform back faces." },
-    typeLine: { type: "string", description: "Full type line, e.g. 'Legendary Creature — Human Wizard', 'Enchantment — Saga', 'Battle — Siege'." },
-    abilities: { type: "string", description: "Rules text, one ability per line. Planeswalkers: '+N: text'. Sagas: 'I — text'. Empty string for vanilla creatures." },
-    flavorText: { type: "string", description: "Flavor text. Empty string if abilities are already rich/long." },
-    artDescription: { type: "string", description: "Vivid description of the card art. When artDirective is edit_self/edit_other, describe only the DELTA." },
-    artDirective: {
-      type: "string",
-      enum: ART_DIRECTIVE_ENUM as unknown as string[],
-      description: "How to produce this face's art: generate (new art from scratch), keep_self (use this face's existing art unchanged), keep_other (use other face's existing art unchanged — swap case), edit_self (Kontext tweak of own art), edit_other (Kontext tweak of other face's art).",
-    },
+    name: { type: "string" },
+    manaCost: { type: "string" },
+    typeLine: { type: "string" },
+    abilities: { type: "string" },
+    flavorText: { type: "string" },
+    artDescription: { type: "string" },
+    artDirective: { type: "string", enum: ART_DIRECTIVE_ENUM as unknown as string[] },
     rarity: { type: "string", enum: ["common", "uncommon", "rare", "mythic"] },
-    colorIndicator: { type: "string", description: "Color letters like 'G' or 'UB' for cards with no manaCost that need a color identity (transform back faces, aftermath back halves). Empty string otherwise." },
-    power: { type: "string", description: "Power. Empty string for non-creatures." },
-    toughness: { type: "string", description: "Toughness. Empty string for non-creatures." },
-    startingLoyalty: { type: "string", description: "Starting loyalty, usually '3'-'5'. Empty string for non-planeswalkers." },
-    battleDefense: { type: "string", description: "Defense value, usually '3'-'5'. Empty string for non-battles." },
+    colorIndicator: { type: "string" },
+    power: { type: "string" },
+    toughness: { type: "string" },
+    startingLoyalty: { type: "string" },
+    battleDefense: { type: "string" },
   },
 };
 
@@ -85,7 +80,7 @@ const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
   type: "function",
   function: {
     name: "design_card",
-    description: "Design a Magic: The Gathering card. Use one card for single-faced designs, two for transform/adventure/split/modal-DFC/aftermath.",
+    description: "Design a Magic: The Gathering card.",
     strict: true,
     parameters: {
       type: "object",
@@ -94,7 +89,6 @@ const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
       properties: {
         cards: {
           type: "array",
-          description: "One card for single-faced. Two cards for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse). The framework infers layout from card content.",
           minItems: 1,
           maxItems: 2,
           items: CARD_SCHEMA,
@@ -204,8 +198,13 @@ Common violations to avoid: targeted discard is BLACK only (red only gets random
 - abilities: one per line. Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II — text".
 - Transform back faces: manaCost="" and colorIndicator is set (e.g. "G", "UB").
 - Adventure: main face is a creature; second card is Instant/Sorcery — Adventure.
-- Battle — Siege: include battleDefense and a "When ~ is defeated, ..." ability.`,
+- Battle — Siege: include battleDefense and a "When ~ is defeated, ..." ability.
 
+## New mechanic: Prepared
+Similar to Adventure, a permanent card can have an instant or sorcery as a secondary card. The permanent becomes prepared, usually through a triggered ability on the permanent, sometimes the permanent enters prepared, sometimes a different card can prepare the permanent. The attached spell can be cast. Then the permanent becomes unprepared.
+When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Example:
+\`Whenever you cast a creature spell, ~ becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
+`,
 };
 
 const SYSTEM_PROMPT = SYSTEM_PROMPTS.v6_minimal;
@@ -260,21 +259,10 @@ function parseArgs(args: any): LLMCallResult["response"] {
   const [primary, secondary] = cards;
   const cardData = llmCardToCardData(primary, secondary);
 
-  // Expose per-face directives to downstream via the existing art_directives shape.
-  // The downstream pipeline still reads the old FaceArtDirective schema; we cast here
-  // to keep the interface stable until the card-generator is updated in a follow-up.
-  const artDirectives = primary.artDirective
-    ? {
-        primary: { mode: primary.artDirective as any },
-        ...(secondary?.artDirective ? { secondary: { mode: secondary.artDirective as any } } : {}),
-      }
-    : undefined;
+  const artDirectives: ArtDirective[] = [primary.artDirective];
+  if (secondary?.artDirective) artDirectives.push(secondary.artDirective);
 
-  return {
-    cardData,
-    explanation: "",
-    art_directives: artDirectives as ArtDirectives | undefined,
-  };
+  return { cardData, artDirectives };
 }
 
 export async function callLLM(

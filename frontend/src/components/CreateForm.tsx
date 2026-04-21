@@ -11,6 +11,16 @@ const IDEAS = [
   "A white angel that protects the weak",
   "A red goblin with explosive abilities",
   "A multicolor commander that unites tribes",
+  // Composite cards
+  "A creature with an Adventure — the adventure lets you scry 2 then draw a card",
+  "A werewolf that transforms: scared villager by day, bloodthirsty beast by night",
+  "A split card where one half counters a spell and the other half copies it",
+  "A modal double-faced card — a powerful spell on the front, a tap-land on the back",
+  "A Battle — Siege that, when defeated, transforms into a flying angel",
+  "An aftermath card — first half is a burn spell, second half returns it from the graveyard",
+  "A Saga about the rise and fall of an ancient empire, 4 chapters",
+  "An instant with Prepare",
+  "A sorcery with Prepare that destroys a creature",
 ];
 
 export function CreateForm({ onSubmit, loading }: { onSubmit: (desc: string) => void; loading: boolean }) {
