@@ -38,17 +38,17 @@ export interface RenderResult {
 export async function renderAndUpload(cardData: CardData): Promise<RenderResult> {
   console.log(`[Render] Rendering: ${cardData.name || "Untitled"}`);
   const start = Date.now();
-  const rendered = await renderCard(cardData);
+  const rendered = await renderCard(cardData, { quality: "medium", format: "jpeg" });
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 
   const urls: string[] = [];
 
-  const frontKey = `rendered/${uuid()}.png`;
-  urls.push(await uploadBuffer(rendered.frontFace, frontKey));
+  const frontKey = `rendered/${uuid()}.jpg`;
+  urls.push(await uploadBuffer(rendered.frontFace, frontKey, "image/jpeg"));
 
   if (rendered.backFace) {
-    const backKey = `rendered/${uuid()}-back.png`;
-    urls.push(await uploadBuffer(rendered.backFace, backKey));
+    const backKey = `rendered/${uuid()}-back.jpg`;
+    urls.push(await uploadBuffer(rendered.backFace, backKey, "image/jpeg"));
   }
 
   return {

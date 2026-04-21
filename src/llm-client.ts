@@ -204,6 +204,8 @@ Common violations to avoid: targeted discard is BLACK only (red only gets random
 Similar to Adventure, a permanent card can have an instant or sorcery as a secondary card. The permanent becomes prepared, usually through a triggered ability on the permanent, sometimes the permanent enters prepared, sometimes a different card can prepare the permanent. The attached spell can be cast. Then the permanent becomes unprepared.
 When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Example:
 \`Whenever you cast a creature spell, ~ becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
+The parenthesized text must be copied verbatim.
+Prepare is not a keyword, or a subtype.
 `,
 };
 
