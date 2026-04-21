@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { CardData, LinkType, Rarity, Color } from "mtg-crucible";
+import type { CardData, Rarity, Color } from "mtg-crucible";
 import type { LLMCardResponse, ArtDirectives } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -49,80 +49,57 @@ function getDefaultClient(): { client: OpenAI; model: string } {
 // Tool definition
 // ---------------------------------------------------------------------------
 
+const ART_DIRECTIVE_ENUM = ["generate", "keep_self", "keep_other", "edit_self", "edit_other"] as const;
+export type ArtDirective = typeof ART_DIRECTIVE_ENUM[number];
+
 const CARD_SCHEMA: OpenAI.FunctionParameters = {
   type: "object",
+  additionalProperties: false,
+  required: [
+    "name", "manaCost", "typeLine", "abilities", "flavorText", "artDescription",
+    "artDirective", "rarity", "colorIndicator", "power", "toughness",
+    "startingLoyalty", "battleDefense",
+  ],
   properties: {
     name: { type: "string", description: "Card name" },
-    manaCost: {
+    manaCost: { type: "string", description: "Mana cost like {1}{W}{U}. Empty string for lands and transform back faces." },
+    typeLine: { type: "string", description: "Full type line, e.g. 'Legendary Creature — Human Wizard', 'Enchantment — Saga', 'Battle — Siege'." },
+    abilities: { type: "string", description: "Rules text, one ability per line. Planeswalkers: '+N: text'. Sagas: 'I — text'. Empty string for vanilla creatures." },
+    flavorText: { type: "string", description: "Flavor text. Empty string if abilities are already rich/long." },
+    artDescription: { type: "string", description: "Vivid description of the card art. When artDirective is edit_self/edit_other, describe only the DELTA." },
+    artDirective: {
       type: "string",
-      description: "Mana cost using {W},{U},{B},{R},{G},{C},{1},{2},{X} etc. Hybrid: {W/U}. Phyrexian: {G/P}. Lands have no mana cost.",
+      enum: ART_DIRECTIVE_ENUM as unknown as string[],
+      description: "How to produce this face's art: generate (new art from scratch), keep_self (use this face's existing art unchanged), keep_other (use other face's existing art unchanged — swap case), edit_self (Kontext tweak of own art), edit_other (Kontext tweak of other face's art).",
     },
-    typeLine: {
-      type: "string",
-      description: "Full type line, e.g. 'Legendary Creature — Human Wizard', 'Enchantment — Saga', 'Instant'",
-    },
-    abilities: { type: "string", description: "Rules text. One ability per line. For planeswalkers: '+1: text' format. For sagas: 'I — text' format." },
-    flavorText: { type: "string", description: "Flavor text (optional)" },
-    artDescription: { type: "string", description: "Vivid description of the card art to generate" },
     rarity: { type: "string", enum: ["common", "uncommon", "rare", "mythic"] },
-    colorIndicator: {
-      type: "string",
-      description: "Color indicator as color letters, e.g. 'G' for green, 'UB' for blue-black. Only needed for cards with no mana cost that need a color identity (e.g. transform back faces).",
-    },
-    power: { type: "string", description: "Power (creatures only)" },
-    toughness: { type: "string", description: "Toughness (creatures only)" },
-    startingLoyalty: { type: "string", description: "Starting loyalty (planeswalkers only)" },
-    battleDefense: { type: "string", description: "Defense value (battles only)" },
+    colorIndicator: { type: "string", description: "Color letters like 'G' or 'UB' for cards with no manaCost that need a color identity (transform back faces, aftermath back halves). Empty string otherwise." },
+    power: { type: "string", description: "Power. Empty string for non-creatures." },
+    toughness: { type: "string", description: "Toughness. Empty string for non-creatures." },
+    startingLoyalty: { type: "string", description: "Starting loyalty, usually '3'-'5'. Empty string for non-planeswalkers." },
+    battleDefense: { type: "string", description: "Defense value, usually '3'-'5'. Empty string for non-battles." },
   },
-  required: ["name", "typeLine", "abilities", "artDescription", "rarity"],
 };
 
 const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
   type: "function",
   function: {
     name: "design_card",
-    description: "Design a Magic: The Gathering card",
+    description: "Design a Magic: The Gathering card. Use one card for single-faced designs, two for transform/adventure/split/modal-DFC/aftermath.",
+    strict: true,
     parameters: {
       type: "object",
+      additionalProperties: false,
+      required: ["cards"],
       properties: {
-        card: CARD_SCHEMA,
-        linkedCard: {
-          ...CARD_SCHEMA,
-          description: "Second face/half of the card (for transform, adventure, modal DFC, split, etc.)",
-        },
-        linkType: {
-          type: "string",
-          enum: ["transform", "modal_dfc", "adventure", "flip", "split", "fuse", "aftermath"],
-          description: "Relationship between card and linkedCard. Only set if linkedCard is provided.",
-        },
-        explanation: { type: "string", description: "Brief explanation of the design" },
-        suggestionArtwork: { type: "string", description: "A specific suggestion for an art edit" },
-        suggestionMechanics: { type: "string", description: "A specific suggestion for a mechanics change" },
-        artDirectives: {
-          type: "object",
-          description: "For edit mode only: per-face art generation instructions. reference defaults to primary_old if omitted.",
-          properties: {
-            primary: {
-              type: "object",
-              properties: {
-                mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"], description: "no_edit: use referenced art as-is. fine_grained_edit: edit referenced art with Flux Kontext (put ONLY the delta in artDescription). coarse_grained_edit: generate new art from scratch." },
-                reference: { type: "string", enum: ["primary_old", "secondary_old", "primary_new", "secondary_new"], description: "Which art to use as source. _old = from original card, _new = from the newly generated face. Ignored for coarse_grained_edit. Invalid combos (circular deps, self-refs) fall back to coarse_grained_edit." },
-              },
-              required: ["mode"],
-            },
-            secondary: {
-              type: "object",
-              properties: {
-                mode: { type: "string", enum: ["no_edit", "fine_grained_edit", "coarse_grained_edit"] },
-                reference: { type: "string", enum: ["primary_old", "secondary_old", "primary_new", "secondary_new"] },
-              },
-              required: ["mode"],
-            },
-          },
-          required: ["primary"],
+        cards: {
+          type: "array",
+          description: "One card for single-faced. Two cards for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse). The framework infers layout from card content.",
+          minItems: 1,
+          maxItems: 2,
+          items: CARD_SCHEMA,
         },
       },
-      required: ["card", "explanation"],
     },
   },
 };
@@ -144,34 +121,36 @@ function parseColorIndicator(ci: string | undefined): Color[] | undefined {
 
 interface LLMCard {
   name: string;
-  manaCost?: string;
+  manaCost: string;
   typeLine: string;
   abilities: string;
-  flavorText?: string;
+  flavorText: string;
   artDescription: string;
+  artDirective: ArtDirective;
   rarity: string;
-  colorIndicator?: string;
-  power?: string;
-  toughness?: string;
-  startingLoyalty?: string;
-  battleDefense?: string;
+  colorIndicator: string;
+  power: string;
+  toughness: string;
+  startingLoyalty: string;
+  battleDefense: string;
 }
 
-function llmCardToCardData(card: LLMCard, linkType?: string, linkedCard?: LLMCard): CardData {
+const blank = (s: string | undefined): string | undefined => (s && s !== "") ? s : undefined;
+
+function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
   return {
     name: card.name,
-    manaCost: card.manaCost || undefined,
+    manaCost: blank(card.manaCost),
     typeLine: card.typeLine,
     rarity: card.rarity as Rarity,
-    abilities: card.abilities || undefined,
-    flavorText: card.flavorText || undefined,
+    abilities: blank(card.abilities),
+    flavorText: blank(card.flavorText),
     artDescription: card.artDescription,
-    colorIndicator: parseColorIndicator(card.colorIndicator),
-    power: card.power || undefined,
-    toughness: card.toughness || undefined,
-    startingLoyalty: card.startingLoyalty || undefined,
-    battleDefense: card.battleDefense || undefined,
-    linkType: linkType as LinkType | undefined,
+    colorIndicator: parseColorIndicator(blank(card.colorIndicator)),
+    power: blank(card.power),
+    toughness: blank(card.toughness),
+    startingLoyalty: blank(card.startingLoyalty),
+    battleDefense: blank(card.battleDefense),
     linkedCard: linkedCard ? llmCardToCardData(linkedCard) : undefined,
   };
 }
@@ -181,55 +160,56 @@ function llmCardToCardData(card: LLMCard, linkType?: string, linkedCard?: LLMCar
 // ---------------------------------------------------------------------------
 
 export const SYSTEM_PROMPTS = {
-  concise: `You are a Magic: The Gathering card designer. Use the design_card tool to create cards.
+  v6_minimal: `You are a Magic: The Gathering card designer. Call the design_card tool with a \`cards\` array.
 
-Key rules:
-- Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X. Hybrid: {W/U}. Phyrexian: {G/P}
-- Lands have no manaCost
-- typeLine should be a full type line like "Legendary Creature — Human Wizard" or "Instant"
-- abilities: one ability per line. Planeswalkers use "+1: text" format. Sagas use "I — text" format.
-- ALWAYS provide a vivid artDescription
-- For creatures, include power and toughness
-- For planeswalkers, include startingLoyalty
-- For battles, include battleDefense
-- Only use colorIndicator for cards that need a color identity but have no mana cost (e.g. transform back faces)
-- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.`,
+## Shape
+- \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse). The framework infers layout from the card content — do NOT pick a "linkType".
+- Every field on every card must be present. For fields that don't apply, use "" (empty string):
+  - Lands and transform back faces: \`manaCost: ""\`
+  - Non-creatures: \`power: ""\`, \`toughness: ""\`
+  - Non-planeswalkers: \`startingLoyalty: ""\`
+  - Non-battles: \`battleDefense: ""\`
+  - Cards that don't need a color identity beyond manaCost: \`colorIndicator: ""\`
+  - Vanilla creatures with no rules text: \`abilities: ""\`
+- Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name — use two cards, one named "Wine", one named "Dine".
+- If the abilities text is already rich or long, set \`flavorText: ""\` to keep the card readable. Only write flavor text when the rules text is short and the flavor genuinely adds something.
 
-  detailed: `You are an expert Magic: The Gathering card designer with deep knowledge of MTG history, color pie philosophy, and game balance. Use the design_card tool to create cards.
+## artDirective (required per face)
+- "generate" — generate new art from scratch. Default for new cards.
+- "keep_self" — use this face's existing art unchanged. Edit-mode only.
+- "keep_other" — use the OTHER face's existing art unchanged (art-swap case). Edit-mode only.
+- "edit_self" — Flux Kontext tweak of this face's existing art. Put ONLY the delta in artDescription ("add dramatic storm clouds").
+- "edit_other" — Flux Kontext tweak of the other face's art. In create mode, face 2 can derive from face 1's newly generated art this way. Delta only in artDescription.
 
-Design philosophy:
-- Every card should feel like it belongs in a real MTG set. Consider limited environment, constructed playability, and flavor.
-- Respect the color pie strictly: white gets lifegain/exile/tokens/rules-setting; blue gets draw/counter/bounce/flying; black gets kill/drain/discard/recursion; red gets burn/haste/impulse/chaos; green gets big bodies/ramp/fight/trample.
-- Balance mana cost against power level. A 2-mana 3/3 with upside needs a drawback. A 6-mana creature needs to win the game.
-- Common cards should be simple (1-2 keywords). Uncommons can have one triggered/activated ability. Rares can be complex. Mythics should be splashy and memorable.
+When editing an existing card and the user didn't ask to change art, use "keep_self" on both faces.
 
-Technical rules:
-- Mana symbols: {W} {U} {B} {R} {G} {C}, {1} {2} etc for generic, {X} for X. Hybrid: {W/U}. Phyrexian: {G/P}
-- Lands have no manaCost
-- typeLine: full type line like "Legendary Creature — Human Wizard", "Enchantment — Saga", "Instant"
-- abilities: one ability per line. Planeswalkers: "+1: text" format. Sagas: "I — text" format.
-- ALWAYS provide a vivid, specific artDescription that an AI image generator could use
-- For creatures: include power and toughness
-- For planeswalkers: include startingLoyalty (typically 3-6)
-- For battles: include battleDefense
-- colorIndicator: only for cards with no mana cost that need a color identity (e.g. transform back faces, aftermath back halves)
-- Use linkedCard + linkType for double-faced cards, adventures, split cards, etc.
-- Split card names use "X // Y" convention. Adventure names are usually a verb phrase.`,
+## Color pie (strict)
+- WHITE: lifegain, exile-based removal, tokens, protection, pacifism, rules-setting
+- BLUE: draw, counter spells, bounce, flying, unblockable, tempo
+- BLACK: unconditional destroy, TARGETED discard (opponent chooses from hand), life drain, sacrifice, reanimation
+- RED: direct damage, haste, impulse draw (exile then play), RANDOM discard only, chaos, temporary theft
+- GREEN: big creatures, ramp, trample, reach, fight, artifact/enchantment destruction
+
+Common violations to avoid: targeted discard is BLACK only (red only gets random). Counter spells are BLUE only. Unconditional destroy is BLACK (white uses conditions or exile). Drawing cards unconditionally at instant speed is BLUE only.
+
+## Rarity = complexity ceiling
+- common: 1-2 keywords max, vanilla or French vanilla, no triggered card advantage.
+- uncommon: one meaningful triggered or activated ability.
+- rare: complex unique abilities are fine.
+- mythic: splashy, memorable, typically CMC 5+.
+
+## Technical
+- Mana: {W} {U} {B} {R} {G} {C}, generic like {1} {2}, {X}, hybrid {W/U}, Phyrexian {G/P}.
+- typeLine is the FULL line: "Legendary Creature — Human Wizard", "Enchantment — Saga", "Battle — Siege", "Instant — Adventure".
+- abilities: one per line. Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II — text".
+- Transform back faces: manaCost="" and colorIndicator is set (e.g. "G", "UB").
+- Adventure: main face is a creature; second card is Instant/Sorcery — Adventure.
+- Battle — Siege: include battleDefense and a "When ~ is defeated, ..." ability.`,
+
 };
 
-const SYSTEM_PROMPT = SYSTEM_PROMPTS.concise;
-
-const EDIT_SYSTEM_PROMPT = SYSTEM_PROMPT + `\n\nWhen editing, set artDirectives to control art for each face:
-- Each face gets a directive with "mode" and optional "reference"
-- Modes:
-  - "no_edit" — use the referenced face's existing art as-is (default if art is not mentioned)
-  - "fine_grained_edit" — make targeted edits to the referenced art. Put ONLY the delta/changes in artDescription.
-  - "coarse_grained_edit" — generate completely new art from scratch
-- References:
-  - "primary_old" / "secondary_old" — art from the original card's faces (available immediately)
-  - "primary_new" / "secondary_new" — art from the newly generated face (generates that face first, then uses it as input)
-  - Defaults to "primary_old" if omitted.
-- For single-face cards, only set primary. For multi-face, set both primary and secondary.`;
+const SYSTEM_PROMPT = SYSTEM_PROMPTS.v6_minimal;
+const EDIT_SYSTEM_PROMPT = SYSTEM_PROMPT;
 
 // ---------------------------------------------------------------------------
 // Build messages
@@ -275,16 +255,25 @@ export interface LLMCallResult {
 }
 
 function parseArgs(args: any): LLMCallResult["response"] {
-  const card: LLMCard = args.card;
-  if (!card?.name) throw new Error("Missing card name in tool call");
-  const cardData = llmCardToCardData(card, args.linkType, args.linkedCard);
+  const cards: LLMCard[] = args.cards;
+  if (!cards?.length || !cards[0]?.name) throw new Error("Missing primary card in tool call");
+  const [primary, secondary] = cards;
+  const cardData = llmCardToCardData(primary, secondary);
+
+  // Expose per-face directives to downstream via the existing art_directives shape.
+  // The downstream pipeline still reads the old FaceArtDirective schema; we cast here
+  // to keep the interface stable until the card-generator is updated in a follow-up.
+  const artDirectives = primary.artDirective
+    ? {
+        primary: { mode: primary.artDirective as any },
+        ...(secondary?.artDirective ? { secondary: { mode: secondary.artDirective as any } } : {}),
+      }
+    : undefined;
 
   return {
     cardData,
-    explanation: args.explanation || "",
-    suggestion_artwork: args.suggestionArtwork || "",
-    suggestion_mechanics: args.suggestionMechanics || "",
-    art_directives: args.artDirectives as ArtDirectives | undefined,
+    explanation: "",
+    art_directives: artDirectives as ArtDirectives | undefined,
   };
 }
 
