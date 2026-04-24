@@ -69,11 +69,11 @@ const FACE_TEMPLATES: { label: string; value: FaceTemplate }[] = [
 /** Reverse-map CardData to Layout for form initialization. */
 function inferLayout(cd: CardData): Layout {
   if (cd.linkType) {
-    const map: Record<LinkType, Layout> = {
+    const map: Partial<Record<LinkType, Layout>> = {
       transform: "transform", modal_dfc: "mdfc", adventure: "adventure",
       split: "split", fuse: "fuse", flip: "flip", aftermath: "aftermath",
     };
-    return map[cd.linkType];
+    return map[cd.linkType] ?? "single";
   }
   const t = cd.cardTemplate;
   if (t) {
