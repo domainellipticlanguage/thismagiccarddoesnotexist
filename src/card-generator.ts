@@ -10,8 +10,7 @@ import {
 } from "./card-renderer.js";
 import {
   getCard,
-  putCard,
-  markSuperseded,
+  commitCard,
 } from "./card-table.js";
 
 /** Resolve art URL for a single face given its directive and the other face's context. */
@@ -63,6 +62,8 @@ async function generateArtForAllFaces(
   const faces = [cardData, cardData.linkedCard].filter((f): f is CardData => !!f);
   const faceDims = [dims.primaryArtDimensions, dims.secondaryArtDimensions];
   const originalFaces = [originalCard?.cardData, originalCard?.cardData.linkedCard];
+  // crucible 0.3.5 widened artUrl to string | Buffer; we only ever store string URLs.
+  const origUrls = originalFaces.map((f) => (typeof f?.artUrl === "string" ? f.artUrl : undefined));
   const directives = faces.map((_, i) => artDirectives[i] ?? "generate");
 
   const newUrls: (string | undefined)[] = new Array(faces.length).fill(undefined);
@@ -75,8 +76,8 @@ async function generateArtForAllFaces(
         face,
         directives[i],
         faceDims[i],
-        originalFaces[i]?.artUrl,
-        originalFaces[1 - i]?.artUrl,
+        origUrls[i],
+        origUrls[1 - i],
         undefined,
       );
     })
@@ -89,8 +90,8 @@ async function generateArtForAllFaces(
       faces[i],
       directives[i],
       faceDims[i],
-      originalFaces[i]?.artUrl,
-      originalFaces[1 - i]?.artUrl,
+      origUrls[i],
+      origUrls[1 - i],
       newUrls[1 - i],
     );
   }
@@ -168,10 +169,7 @@ export async function generateCard(
     isSuperseded: false,
   };
 
-  await putCard(record);
-  if (mode === "edit" && originalCardId) {
-    await markSuperseded(originalCardId);
-  }
+  await commitCard(record, mode === "edit" ? originalCardId : undefined);
 
   console.log(`[Pipeline] Done: ${cardId}`);
   return record;

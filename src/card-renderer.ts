@@ -41,15 +41,13 @@ export async function renderAndUpload(cardData: CardData): Promise<RenderResult>
   const rendered = await renderCard(cardData, { quality: "medium", format: "jpeg" });
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 
-  const urls: string[] = [];
-
-  const frontKey = `rendered/${uuid()}.jpg`;
-  urls.push(await uploadBuffer(rendered.frontFace, frontKey, "image/jpeg"));
-
+  const uploads: Promise<string>[] = [
+    uploadBuffer(rendered.frontFace, `rendered/${uuid()}.jpg`, "image/jpeg"),
+  ];
   if (rendered.backFace) {
-    const backKey = `rendered/${uuid()}-back.jpg`;
-    urls.push(await uploadBuffer(rendered.backFace, backKey, "image/jpeg"));
+    uploads.push(uploadBuffer(rendered.backFace, `rendered/${uuid()}-back.jpg`, "image/jpeg"));
   }
+  const urls = await Promise.all(uploads);
 
   return {
     rendered,

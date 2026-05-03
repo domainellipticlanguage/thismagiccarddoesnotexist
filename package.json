@@ -14,7 +14,7 @@
     "@aws-sdk/lib-dynamodb": "^3.800.0",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "mtg-crucible": "^0.3.3",
+    "mtg-crucible": "^0.3.5",
     "openai": "^4.103.0",
     "replicate": "^1.0.1",
     "serverless-http": "^3.2.0",

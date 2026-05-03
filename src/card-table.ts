@@ -5,6 +5,7 @@ import {
   PutCommand,
   UpdateCommand,
   ScanCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { CardRecord, CardDocument } from "./types.js";
 
@@ -16,9 +17,27 @@ function tableName(): string {
   return process.env.DYNAMODB_TABLE || "thismagiccarddoesnotexist3";
 }
 
-/** Write a single card record. */
-export async function putCard(record: CardRecord): Promise<void> {
-  await client.send(new PutCommand({ TableName: tableName(), Item: record }));
+/** Write a card record. If supersededId is given, atomically mark that record superseded in the same transaction. */
+export async function commitCard(record: CardRecord, supersededId?: string): Promise<void> {
+  if (!supersededId) {
+    await client.send(new PutCommand({ TableName: tableName(), Item: record }));
+    return;
+  }
+  await client.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        { Put: { TableName: tableName(), Item: record } },
+        {
+          Update: {
+            TableName: tableName(),
+            Key: { id: supersededId },
+            UpdateExpression: "SET isSuperseded = :t",
+            ExpressionAttributeValues: { ":t": true },
+          },
+        },
+      ],
+    })
+  );
 }
 
 /** Get a card by id. */
@@ -63,13 +82,3 @@ export async function softDeleteCard(id: string): Promise<void> {
   );
 }
 
-export async function markSuperseded(id: string): Promise<void> {
-  await client.send(
-    new UpdateCommand({
-      TableName: tableName(),
-      Key: { id },
-      UpdateExpression: "SET isSuperseded = :t",
-      ExpressionAttributeValues: { ":t": true },
-    })
-  );
-}

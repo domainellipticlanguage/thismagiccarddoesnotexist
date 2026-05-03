@@ -130,6 +130,8 @@ interface LLMCard {
 }
 
 const blank = (s: string | undefined): string | undefined => (s && s !== "") ? s : undefined;
+const expandTilde = (s: string | undefined, name: string): string | undefined =>
+  s ? s.replace(/~/g, name) : s;
 
 function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
   return {
@@ -137,7 +139,7 @@ function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
     manaCost: blank(card.manaCost),
     typeLine: card.typeLine,
     rarity: card.rarity as Rarity,
-    abilities: blank(card.abilities),
+    abilities: expandTilde(blank(card.abilities), card.name),
     flavorText: blank(card.flavorText),
     artDescription: card.artDescription,
     colorIndicator: parseColorIndicator(blank(card.colorIndicator)),
