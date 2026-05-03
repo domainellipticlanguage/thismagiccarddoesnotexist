@@ -37,6 +37,8 @@ export default $config({
       memory: "2048 MB",
       timeout: "120 seconds",
       architecture: "arm64",
+      streaming: true,
+      url: { authorization: "none", cors: true },
       link: [table, bucket],
       environment: {
         DYNAMODB_TABLE: table.name,
@@ -56,11 +58,8 @@ export default $config({
       ],
     });
 
-    const api = new sst.aws.ApiGatewayV2("HttpApi");
-    api.route("$default", fn.arn);
-
     return {
-      url: api.url,
+      url: fn.url,
     };
   },
 });
