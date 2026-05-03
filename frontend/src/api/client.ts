@@ -37,7 +37,7 @@ export async function createCard(
   description: string,
   base: string | null = null,
   mode: "create" | "edit" | "copy" = "create"
-): Promise<string> {
+): Promise<CardResponse> {
   const response = await fetch(`${API_BASE}/cards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,5 +47,29 @@ export async function createCard(
     const error = await response.json();
     throw new Error(error.error || "Failed to create card");
   }
-  return (await response.json()).card_id;
+  if (!response.body) throw new Error("Response has no body");
+
+  // The server streams a single newline-terminated JSON line containing
+  // the full CardResponse, then keeps the stream open while it persists
+  // to S3/DDB. We resolve as soon as that line is complete so the caller
+  // doesn't wait for persistence.
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      const newlineIndex = buffer.indexOf("\n");
+      if (newlineIndex >= 0) {
+        const parsed = JSON.parse(buffer.slice(0, newlineIndex));
+        if (parsed.error) throw new Error(parsed.error);
+        return parsed as CardResponse;
+      }
+      if (done) break;
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  throw new Error("Stream ended without a complete response");
 }

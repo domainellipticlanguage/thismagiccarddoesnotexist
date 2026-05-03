@@ -18,7 +18,11 @@ export interface Card {
   crucibleText: string;
   cardData: CardData;
   scryfallText: string;
+  scryfallJson: string;
+  rotations: import("mtg-crucible/parser").Rotation[];
   prompt: string;
+  // S3 URLs after persistence; data: URLs in the streaming-create response
+  // before S3 catches up.
   renderedUrls: string[];
   display?: MtgCardDisplayData;
   creatorId: string;

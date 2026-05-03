@@ -16,8 +16,8 @@ export function CreatePage() {
     setLoading(true);
     setError(null);
     try {
-      const cardId = await createCard(description, baseId, mode);
-      navigate(`/card/${cardId}`);
+      const response = await createCard(description, baseId, mode);
+      navigate(`/card/${response.card.id}`, { state: response });
     } catch (err: any) {
       setError(err.message);
       setLoading(false);

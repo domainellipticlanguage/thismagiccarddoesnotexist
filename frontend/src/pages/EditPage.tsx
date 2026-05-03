@@ -23,8 +23,10 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   async function handleAIEdit(description: string) {
     if (!id) return;
     setSaving(true); setError(null);
-    try { navigate(`/card/${await createCard(description, id, mode)}`); }
-    catch (err: any) { setError(err.message); setSaving(false); }
+    try {
+      const response = await createCard(description, id, mode);
+      navigate(`/card/${response.card.id}`, { state: response });
+    } catch (err: any) { setError(err.message); setSaving(false); }
   }
 
   if (loading) return <LoadingSpinner fullScreen />;
