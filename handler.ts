@@ -1,4 +1,4 @@
-import serverless from "serverless-http";
+import { handle } from "hono/aws-lambda";
 import { app } from "./src/app.js";
 
-export const handler = serverless(app);
+export const handler = handle(app);

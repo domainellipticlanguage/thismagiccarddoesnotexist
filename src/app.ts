@@ -1,8 +1,9 @@
-import express from "express";
+import { Hono } from "hono";
+import type { Context } from "hono";
+import { getCookie } from "hono/cookie";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseTypeLine } from "mtg-crucible";
-import type { CardData } from "mtg-crucible";
+import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import {
   getCard,
   getLatestCards,
@@ -12,170 +13,143 @@ import { generateCard } from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
 import type {
   CreateCardRequest,
-  CardDocument,
   CardResponse,
-  CardsResponse,
 } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const app = express();
+export const app = new Hono();
 
-// serverless-http may pass body as a Buffer — convert before express.json() runs
-app.use((req, _res, next) => {
-  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
-    req.body = JSON.parse(req.body.toString());
-  }
-  next();
-});
-app.use(express.json());
-
-// --- API Routes ---
-
-function getCreatorId(req: express.Request): string {
-  return req.cookies?.user_id || req.ip || "anonymous";
+function getCreatorId(c: Context): string {
+  return (
+    getCookie(c, "user_id") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "anonymous"
+  );
 }
 
 function isDebug(): boolean {
   return process.env.IS_DEBUG === "true";
 }
 
-// Simple cookie parsing (avoid cookie-parser dep)
-app.use((req, _res, next) => {
-  const cookieHeader = req.headers.cookie || "";
-  req.cookies = Object.fromEntries(
-    cookieHeader.split(";").map((c) => {
-      const [k, ...v] = c.trim().split("=");
-      return [k, v.join("=")];
-    })
-  );
-  next();
-});
+// --- API Routes ---
 
-app.get("/api/cards", async (_req, res) => {
+app.get("/api/cards", async (c) => {
   try {
-    const limit = parseInt((_req.query.limit as string) || "300", 10);
+    const limit = parseInt(c.req.query("limit") || "300", 10);
     const cards = await getLatestCards(limit);
     const cardsWithDisplay = cards.map((card) => ({
       ...card,
       display: buildDisplay(card),
     }));
-    res.json({ cards: cardsWithDisplay });
+    return c.json({ cards: cardsWithDisplay });
   } catch (err: any) {
     console.error("[API] GET /api/cards error:", err);
-    res.status(500).json({ error: err.message });
+    return c.json({ error: err.message }, 500);
   }
 });
 
-app.get("/api/cards/:id", async (req, res) => {
+app.get("/api/cards/:id", async (c) => {
   try {
-    const card = await getCard(req.params.id);
-    if (!card) return res.status(404).json({ error: "Card not found" });
+    const id = c.req.param("id");
+    const card = await getCard(id);
+    if (!card) return c.json({ error: "Card not found" }, 404);
 
-    const creatorId = getCreatorId(req);
+    const creatorId = getCreatorId(c);
     const canEdit = isDebug() || card.creatorId === creatorId;
 
     card.display = buildDisplay(card);
 
     const response: CardResponse = { card, canEdit, canDelete: canEdit };
-    res.json(response);
+    return c.json(response);
   } catch (err: any) {
     console.error("[API] GET /api/cards/:id error:", err);
-    res.status(500).json({ error: err.message });
+    return c.json({ error: err.message }, 500);
   }
 });
 
-app.delete("/api/cards/:id", async (req, res) => {
+app.delete("/api/cards/:id", async (c) => {
   try {
-    const card = await getCard(req.params.id);
-    if (!card) return res.status(404).json({ error: "Card not found" });
+    const id = c.req.param("id");
+    const card = await getCard(id);
+    if (!card) return c.json({ error: "Card not found" }, 404);
 
-    const creatorId = getCreatorId(req);
+    const creatorId = getCreatorId(c);
     if (!isDebug() && card.creatorId !== creatorId) {
-      return res.status(403).json({ error: "Not authorized" });
+      return c.json({ error: "Not authorized" }, 403);
     }
 
-    await softDeleteCard(req.params.id);
-    res.json({ success: true });
+    await softDeleteCard(id);
+    return c.json({ success: true });
   } catch (err: any) {
     console.error("[API] DELETE error:", err);
-    res.status(500).json({ error: err.message });
+    return c.json({ error: err.message }, 500);
   }
 });
 
-// MVP: advanced field editing disabled — AI edits only
-// app.post("/api/cards/:id/edit", async (req, res) => { ... });
-
-app.post("/api/cards", async (req, res) => {
+app.post("/api/cards", async (c) => {
   try {
-    const body = req.body as CreateCardRequest;
+    const body = (await c.req.json()) as CreateCardRequest;
     if (!body.description) {
-      return res.status(400).json({ error: "description is required" });
+      return c.json({ error: "description is required" }, 400);
     }
 
-    const creatorId = getCreatorId(req);
+    const creatorId = getCreatorId(c);
     const card = await generateCard(
       body.description,
       body.base,
       creatorId,
       body.mode || "create"
     );
-    res.json({ card_id: card.id });
+    return c.json({ card_id: card.id });
   } catch (err: any) {
     console.error("[API] POST create error:", err);
-    res.status(500).json({ error: err.message });
+    return c.json({ error: err.message }, 500);
   }
 });
 
 // --- Eval results API (dev only) ---
 
-import { readFileSync, readdirSync, existsSync } from "fs";
-
 const evalDir = path.resolve(__dirname, "..", "eval");
 
-app.get("/api/eval/results", (_req, res) => {
+app.get("/api/eval/results", (c) => {
   const f = path.join(evalDir, "results.json");
-  if (!existsSync(f)) return res.json([]);
-  res.json(JSON.parse(readFileSync(f, "utf-8")));
+  if (!existsSync(f)) return c.json([]);
+  return c.json(JSON.parse(readFileSync(f, "utf-8")));
 });
 
-app.get("/api/eval/scores", (_req, res) => {
+app.get("/api/eval/scores", (c) => {
   const f = path.join(evalDir, "scores.json");
-  if (!existsSync(f)) return res.json([]);
-  res.json(JSON.parse(readFileSync(f, "utf-8")));
+  if (!existsSync(f)) return c.json([]);
+  return c.json(JSON.parse(readFileSync(f, "utf-8")));
 });
 
-app.get("/api/eval/system-prompts", (_req, res) => {
-  // Dynamic import won't work easily, just read the source and extract
+app.get("/api/eval/system-prompts", (c) => {
   const f = path.join(evalDir, "..", "src", "llm-client.ts");
-  if (!existsSync(f)) return res.json({});
+  if (!existsSync(f)) return c.json({});
   const src = readFileSync(f, "utf-8");
   const prompts: Record<string, string> = {};
   const re = /(\w+):\s*`([\s\S]*?)`/g;
   let m;
-  // Find the SYSTEM_PROMPTS object
   const objMatch = src.match(/export const SYSTEM_PROMPTS\s*=\s*\{([\s\S]*?)\n\};/);
   if (objMatch) {
     while ((m = re.exec(objMatch[1])) !== null) {
       prompts[m[1]] = m[2];
     }
   }
-  res.json(prompts);
+  return c.json(prompts);
 });
 
-app.get("/api/eval/prompts", (_req, res) => {
-  // Parse test metadata from prompts.ts
+app.get("/api/eval/prompts", (c) => {
   const f = path.join(evalDir, "prompts.ts");
-  if (!existsSync(f)) return res.json({});
+  if (!existsSync(f)) return c.json({});
   const src = readFileSync(f, "utf-8");
   const meta: Record<string, { prompt: string; mode: string; criteria: string; originalCardText?: string }> = {};
-  // Extract test cases using regex
   const re = /id:\s*"([^"]+)"[\s\S]*?prompt:\s*"([\s\S]*?)"[\s\S]*?mode:\s*"([^"]+)"[\s\S]*?criteria:\s*"([\s\S]*?)"/g;
   let m;
   while ((m = re.exec(src)) !== null) {
     meta[m[1]] = { prompt: m[2], mode: m[3], criteria: m[4] };
   }
-  // Extract originalCardText references
   const cardTexts: Record<string, string> = {};
   const textRe = /const\s+(\w+)\s*=\s*`([\s\S]*?)`/g;
   let tm;
@@ -189,41 +163,76 @@ app.get("/api/eval/prompts", (_req, res) => {
       meta[rm[1]].originalCardText = cardTexts[rm[2]];
     }
   }
-  res.json(meta);
+  return c.json(meta);
 });
 
-app.get("/api/eval/judge-results", (_req, res) => {
+app.get("/api/eval/judge-results", (c) => {
   const dir = path.join(evalDir, "judge_results");
-  if (!existsSync(dir)) return res.json({});
+  if (!existsSync(dir)) return c.json({});
   const out: Record<string, unknown> = {};
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
     out[file.replace(".json", "")] = JSON.parse(readFileSync(path.join(dir, file), "utf-8"));
   }
-  res.json(out);
+  return c.json(out);
 });
 
-app.get("/api/eval/batches", (_req, res) => {
+app.get("/api/eval/batches", (c) => {
   const dir = path.join(evalDir, "judge_batches");
-  if (!existsSync(dir)) return res.json({});
+  if (!existsSync(dir)) return c.json({});
   const out: Record<string, unknown> = {};
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".json") && !f.startsWith("_"))) {
     out[file.replace(".json", "")] = JSON.parse(readFileSync(path.join(dir, file), "utf-8"));
   }
-  res.json(out);
+  return c.json(out);
 });
 
-app.get("/eval", (_req, res) => {
-  res.sendFile(path.join(evalDir, "index.html"));
+app.get("/eval", (c) => {
+  const f = path.join(evalDir, "index.html");
+  if (!existsSync(f)) return c.notFound();
+  return c.html(readFileSync(f, "utf-8"));
 });
 
-// --- Static file serving (built React app) ---
+// --- Static file serving (built React app) + SPA fallback ---
 
-const staticDir = process.env.LAMBDA_TASK_ROOT
-  ? path.resolve(process.env.LAMBDA_TASK_ROOT, "frontend", "dist")
+const staticRoot = process.env.LAMBDA_TASK_ROOT
+  ? path.join(process.env.LAMBDA_TASK_ROOT, "frontend", "dist")
   : path.resolve(__dirname, "..", "frontend", "dist");
-app.use(express.static(staticDir));
 
-// SPA fallback — serve index.html for all non-API routes
-app.get("/{*path}", (_req, res) => {
-  res.sendFile(path.join(staticDir, "index.html"));
+const mimeTypes: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ico": "image/x-icon",
+  ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+};
+
+app.get("*", (c) => {
+  const reqPath = c.req.path === "/" ? "/index.html" : c.req.path;
+  const filePath = path.normalize(path.join(staticRoot, reqPath));
+
+  if (filePath.startsWith(staticRoot) && existsSync(filePath) && statSync(filePath).isFile()) {
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = mimeTypes[ext] || "application/octet-stream";
+    return new Response(readFileSync(filePath), {
+      headers: { "Content-Type": contentType },
+    });
+  }
+
+  // SPA fallback
+  const indexPath = path.join(staticRoot, "index.html");
+  if (existsSync(indexPath)) {
+    return c.html(readFileSync(indexPath, "utf-8"));
+  }
+  return c.notFound();
 });

@@ -1,8 +1,9 @@
 import "dotenv/config";
+import { serve } from "@hono/node-server";
 import { app } from "./src/app.js";
 
 const PORT = parseInt(process.env.PORT || "3001", 10);
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+serve({ fetch: app.fetch, port: PORT }, (info) => {
+  console.log(`Server running at http://localhost:${info.port}`);
 });

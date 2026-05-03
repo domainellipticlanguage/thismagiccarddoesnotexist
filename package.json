@@ -12,16 +12,15 @@
     "@aws-sdk/client-dynamodb": "^3.800.0",
     "@aws-sdk/client-s3": "^3.800.0",
     "@aws-sdk/lib-dynamodb": "^3.800.0",
+    "@hono/node-server": "^1.13.0",
     "dotenv": "^16.5.0",
-    "express": "^5.1.0",
+    "hono": "^4.6.0",
     "mtg-crucible": "^0.3.5",
     "openai": "^4.103.0",
     "replicate": "^1.0.1",
-    "serverless-http": "^3.2.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
     "@types/uuid": "^10.0.0",
     "esbuild": "^0.27.4",
     "tsx": "^4.21.0",
