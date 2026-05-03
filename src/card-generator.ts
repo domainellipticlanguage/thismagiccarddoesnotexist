@@ -164,13 +164,6 @@ export function buildCardRecord(g: GeneratedCard, renderedUrls: string[]): CardR
   };
 }
 
-async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  const start = Date.now();
-  const result = await fn();
-  console.log(`[Pipeline] phase ${label}: ${((Date.now() - start) / 1000).toFixed(2)}s`);
-  return result;
-}
-
 /** Phase 1: LLM, art, render. Returns image buffers — no S3, no DDB. */
 export async function generateRenderedCard(
   description: string,
@@ -179,8 +172,7 @@ export async function generateRenderedCard(
   mode: "create" | "edit" | "copy",
 ): Promise<GeneratedCard> {
   const cardId = uuid();
-  const totalStart = Date.now();
-  console.log(`[Pipeline] ${mode} card ${cardId}`);
+  console.log(`[Pipeline] start ${cardId} ${mode}`);
 
   let originalCard: CardDocument | undefined;
   let originalCrucibleText: string | undefined;
@@ -190,9 +182,7 @@ export async function generateRenderedCard(
     originalCrucibleText = originalCard.crucibleText;
   }
 
-  const llmResult = await timed("LLM", () =>
-    llmCreateCard(description, originalCrucibleText, mode)
-  );
+  const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
 
   const cardData = llmResult.cardData;
   cardData.artist = "prunaai/p-image";
@@ -201,21 +191,17 @@ export async function generateRenderedCard(
     cardData.linkedCard.artist = "prunaai/p-image";
     cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
   }
-  console.log(`[Pipeline] Card: ${cardData.name} | art directives: ${llmResult.artDirectives.join(",")}`);
+  console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
 
-  await timed("Art", () =>
-    generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard)
-  );
+  await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
-  const rendered = await timed("Render", () => renderCardOnly(cardData));
+  const rendered = await renderCardOnly(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
 
   // Renderer is done with the Buffer artUrls; swap each Buffer for its
   // future S3 URL on cardData so the response (and DDB record) carries
   // proper string URLs. The bytes are queued for the persist phase.
   const pendingArtUploads = reserveArtUrls(cardData);
-
-  console.log(`[Pipeline] Generated in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 
   return {
     cardId,
@@ -232,17 +218,11 @@ export async function generateRenderedCard(
 
 /** Phase 2: upload all art + rendered faces to S3, write CardRecord to DDB. */
 export async function persistGeneratedCard(g: GeneratedCard): Promise<CardRecord> {
-  const start = Date.now();
   const [renderedUrls] = await Promise.all([
-    timed("S3 upload (rendered faces)", () => uploadFaces(g.rendered)),
-    timed("S3 upload (art)", () =>
-      Promise.all(g.pendingArtUploads.map((p) => uploadBuffer(p.buffer, p.key, "image/png")))
-    ),
+    uploadFaces(g.rendered),
+    Promise.all(g.pendingArtUploads.map((p) => uploadBuffer(p.buffer, p.key, "image/png"))),
   ]);
   const record = buildCardRecord(g, renderedUrls);
-  await timed("DDB commit", () =>
-    commitCard(record, g.mode === "edit" ? g.parentId : undefined)
-  );
-  console.log(`[Pipeline] Persisted in ${((Date.now() - start) / 1000).toFixed(2)}s: ${g.cardId}`);
+  await commitCard(record, g.mode === "edit" ? g.parentId : undefined);
   return record;
 }

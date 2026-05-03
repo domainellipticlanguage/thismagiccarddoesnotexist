@@ -25,7 +25,7 @@ export async function generateArt(
       aspect_ratio: "custom",
       width: w,
       height: h,
-      prompt_upsampling: true,
+      prompt_upsampling: false,
     },
   });
 
@@ -65,8 +65,11 @@ export async function editArt(
 }
 
 async function fetchToBuffer(url: string): Promise<Buffer> {
+  const start = Date.now();
   const response = await fetch(url);
-  return Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await response.arrayBuffer());
+  console.log(`[Art] Fetched ${(buffer.length / 1024).toFixed(0)}kb in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+  return buffer;
 }
 
 const KONTEXT_RATIOS = [

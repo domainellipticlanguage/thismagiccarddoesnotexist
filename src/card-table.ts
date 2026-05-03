@@ -19,25 +19,27 @@ function tableName(): string {
 
 /** Write a card record. If supersededId is given, atomically mark that record superseded in the same transaction. */
 export async function commitCard(record: CardRecord, supersededId?: string): Promise<void> {
+  const start = Date.now();
   if (!supersededId) {
     await client.send(new PutCommand({ TableName: tableName(), Item: record }));
-    return;
-  }
-  await client.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        { Put: { TableName: tableName(), Item: record } },
-        {
-          Update: {
-            TableName: tableName(),
-            Key: { id: supersededId },
-            UpdateExpression: "SET isSuperseded = :t",
-            ExpressionAttributeValues: { ":t": true },
+  } else {
+    await client.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          { Put: { TableName: tableName(), Item: record } },
+          {
+            Update: {
+              TableName: tableName(),
+              Key: { id: supersededId },
+              UpdateExpression: "SET isSuperseded = :t",
+              ExpressionAttributeValues: { ":t": true },
+            },
           },
-        },
-      ],
-    })
-  );
+        ],
+      })
+    );
+  }
+  console.log(`[DDB] commit ${record.id}${supersededId ? " (supersedes " + supersededId + ")" : ""} in ${((Date.now() - start) / 1000).toFixed(2)}s`);
 }
 
 /** Get a card by id. */
