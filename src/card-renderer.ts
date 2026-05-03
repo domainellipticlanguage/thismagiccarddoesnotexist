@@ -10,7 +10,6 @@ import type {
   CardData,
   RenderedCard,
   MtgCardDisplayData,
-  Rotation,
 } from "mtg-crucible";
 import { v4 as uuid } from "uuid";
 import { uploadBuffer } from "./s3-storage.js";
@@ -28,38 +27,30 @@ export function getArtDimensionsFromText(crucibleText: string): {
   return { width: dims.primaryArtDimensions.width, height: dims.primaryArtDimensions.height, cardData };
 }
 
-export interface RenderResult {
-  rendered: RenderedCard;
-  renderedUrls: string[];
-  rotations: Rotation[];
-}
-
-/** Render a card, upload faces to S3. */
-export async function renderAndUpload(cardData: CardData): Promise<RenderResult> {
+/** Render a card to image buffers. No S3 upload. */
+export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> {
   console.log(`[Render] Rendering: ${cardData.name || "Untitled"}`);
   const start = Date.now();
   const rendered = await renderCard(cardData, { quality: "medium", format: "jpeg" });
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+  return rendered;
+}
 
+/** Upload front (and back, if present) face buffers to S3 in parallel. */
+export async function uploadFaces(rendered: RenderedCard): Promise<string[]> {
   const uploads: Promise<string>[] = [
     uploadBuffer(rendered.frontFace, `rendered/${uuid()}.jpg`, "image/jpeg"),
   ];
   if (rendered.backFace) {
     uploads.push(uploadBuffer(rendered.backFace, `rendered/${uuid()}-back.jpg`, "image/jpeg"));
   }
-  const urls = await Promise.all(uploads);
-
-  return {
-    rendered,
-    renderedUrls: urls,
-    rotations: rendered.rotations,
-  };
+  return Promise.all(uploads);
 }
 
 /** Build a MtgCardDisplayData from stored data — no re-rendering needed. */
 export function buildDisplay(doc: {
   renderedUrls: string[];
-  rotations: Rotation[];
+  rotations: import("mtg-crucible").Rotation[];
   cardData: CardData;
   crucibleText: string;
   scryfallText: string;

@@ -1,12 +1,13 @@
 import { v4 as uuid } from "uuid";
 import type { CardDocument, CardRecord, ArtDirective } from "./types.js";
-import type { CardData } from "mtg-crucible";
+import type { CardData, RenderedCard } from "mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
 import { generateArt, editArt } from "./art-generator.js";
 import {
   getArtDimensions,
   normalizeCard,
-  renderAndUpload,
+  renderCardOnly,
+  uploadFaces,
 } from "./card-renderer.js";
 import {
   getCard,
@@ -109,12 +110,45 @@ function applyNormalizedFields(cardData: CardData, normalized: CardData): void {
   cardData.linkType = normalized.linkType;
 }
 
-export async function generateCard(
+/** Result of phase 1 (LLM + art + render). Holds image buffers, not S3 URLs. */
+export interface GeneratedCard {
+  cardId: string;
+  cardData: CardData;
+  rendered: RenderedCard;
+  prompt: string;
+  creatorId: string;
+  parentId?: string;
+  mode: "create" | "edit" | "copy";
+  createdDate: string;
+}
+
+/** Build a CardRecord from a GeneratedCard plus a renderedUrls array (S3 URLs or data URLs). */
+export function buildCardRecord(g: GeneratedCard, renderedUrls: string[]): CardRecord {
+  return {
+    id: g.cardId,
+    cardData: g.cardData,
+    renderedUrls,
+    crucibleText: g.rendered.crucibleText,
+    scryfallText: g.rendered.scryfallText,
+    scryfallJson: g.rendered.scryfallJson,
+    rotations: g.rendered.rotations,
+    prompt: g.prompt,
+    creatorId: g.creatorId,
+    parentId: g.parentId,
+    createdDate: g.createdDate,
+    isDeleted: false,
+    isFinished: true,
+    isSuperseded: false,
+  };
+}
+
+/** Phase 1: LLM, art, render. Returns image buffers — no S3, no DDB. */
+export async function generateRenderedCard(
   description: string,
   originalCardId: string | undefined,
   creatorId: string,
-  mode: "create" | "edit" | "copy"
-): Promise<CardDocument> {
+  mode: "create" | "edit" | "copy",
+): Promise<GeneratedCard> {
   const cardId = uuid();
   console.log(`[Pipeline] ${mode} card ${cardId}`);
 
@@ -126,11 +160,9 @@ export async function generateCard(
     originalCrucibleText = originalCard.crucibleText;
   }
 
-  // 1. LLM
   console.log("[Pipeline] 1. LLM");
   const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
 
-  // 2. CardData from LLM
   console.log("[Pipeline] 2. CardData");
   const cardData = llmResult.cardData;
   cardData.artist = "prunaai/p-image";
@@ -141,36 +173,31 @@ export async function generateCard(
   }
   console.log("[Pipeline] Card:", cardData.name);
 
-  // 3. Art
   console.log("[Pipeline] 3. Art", llmResult.artDirectives);
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
-  // 4. Render
   console.log("[Pipeline] 4. Render");
-  const { rendered, renderedUrls, rotations } = await renderAndUpload(cardData);
+  const rendered = await renderCardOnly(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
 
-  // 5. Store
-  console.log("[Pipeline] 5. Store");
-  const record: CardRecord = {
-    id: cardId,
+  return {
+    cardId,
     cardData,
-    renderedUrls,
-    crucibleText: rendered.crucibleText,
-    scryfallText: rendered.scryfallText,
-    scryfallJson: rendered.scryfallJson,
-    rotations,
+    rendered,
     prompt: description,
     creatorId,
     parentId: originalCardId,
+    mode,
     createdDate: new Date().toISOString(),
-    isDeleted: false,
-    isFinished: true,
-    isSuperseded: false,
   };
+}
 
-  await commitCard(record, mode === "edit" ? originalCardId : undefined);
-
-  console.log(`[Pipeline] Done: ${cardId}`);
+/** Phase 2: upload faces to S3, write CardRecord to DDB. Safe to run after streaming the response. */
+export async function persistGeneratedCard(g: GeneratedCard): Promise<CardRecord> {
+  console.log("[Pipeline] 5. Upload + Store");
+  const renderedUrls = await uploadFaces(g.rendered);
+  const record = buildCardRecord(g, renderedUrls);
+  await commitCard(record, g.mode === "edit" ? g.parentId : undefined);
+  console.log(`[Pipeline] Done: ${g.cardId}`);
   return record;
 }

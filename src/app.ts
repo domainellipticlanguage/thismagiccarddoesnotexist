@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
+import { stream } from "hono/streaming";
 import path from "path";
 import { fileURLToPath } from "url";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
@@ -9,7 +10,11 @@ import {
   getLatestCards,
   softDeleteCard,
 } from "./card-table.js";
-import { generateCard } from "./card-generator.js";
+import {
+  generateRenderedCard,
+  persistGeneratedCard,
+  buildCardRecord,
+} from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
 import type {
   CreateCardRequest,
@@ -88,24 +93,67 @@ app.delete("/api/cards/:id", async (c) => {
 });
 
 app.post("/api/cards", async (c) => {
+  let body: CreateCardRequest;
   try {
-    const body = (await c.req.json()) as CreateCardRequest;
-    if (!body.description) {
-      return c.json({ error: "description is required" }, 400);
-    }
-
-    const creatorId = getCreatorId(c);
-    const card = await generateCard(
-      body.description,
-      body.base,
-      creatorId,
-      body.mode || "create"
-    );
-    return c.json({ card_id: card.id });
-  } catch (err: any) {
-    console.error("[API] POST create error:", err);
-    return c.json({ error: err.message }, 500);
+    body = (await c.req.json()) as CreateCardRequest;
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
   }
+  if (!body.description) {
+    return c.json({ error: "description is required" }, 400);
+  }
+
+  const creatorId = getCreatorId(c);
+
+  // Stream the response so the client gets the rendered card as soon as
+  // render completes — S3 upload + DDB write happen after the flush, while
+  // the stream is still open. The client's perceived latency drops by the
+  // duration of those writes.
+  return stream(c, async (s) => {
+    try {
+      const generated = await generateRenderedCard(
+        body.description,
+        body.base,
+        creatorId,
+        body.mode || "create",
+      );
+
+      // Build the response card with data URLs so the client can render
+      // the image immediately, before S3 has the persisted copy.
+      const dataUrls = [
+        `data:image/jpeg;base64,${generated.rendered.frontFace.toString("base64")}`,
+      ];
+      if (generated.rendered.backFace) {
+        dataUrls.push(`data:image/jpeg;base64,${generated.rendered.backFace.toString("base64")}`);
+      }
+      const responseCard = buildCardRecord(generated, dataUrls);
+      const responsePayload: CardResponse = {
+        card: { ...responseCard, display: buildDisplay(responseCard) },
+        canEdit: true,
+        canDelete: true,
+      };
+
+      // Newline-terminated so the client can detect end-of-payload without
+      // waiting for the stream to close (which it won't until persistence
+      // finishes).
+      await s.write(JSON.stringify(responsePayload) + "\n");
+
+      // Persistence runs after the flush. The function stays alive (and
+      // billed) until this resolves, but the client already has the card.
+      await persistGeneratedCard(generated);
+    } catch (err: any) {
+      console.error("[API] POST create error:", err);
+      // Best-effort: report the error in the stream. If we already sent
+      // the success payload the client will see this as a trailing line
+      // and ignore it; if we failed before flushing, this is the only
+      // signal the client gets.
+      try {
+        await s.write(JSON.stringify({ error: err.message }) + "\n");
+      } catch {
+        // Stream may already be torn down; nothing more we can do.
+      }
+    }
+  });
 });
 
 // --- Eval results API (dev only) ---
