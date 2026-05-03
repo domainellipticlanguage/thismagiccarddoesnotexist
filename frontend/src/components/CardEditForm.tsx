@@ -722,7 +722,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
     battleDefense: cd.battleDefense ?? "",
     flavorText: cd.flavorText ?? "",
     artDescription: cd.artDescription ?? "",
-    artUrl: cd.artUrl ?? "",
+    artUrl: typeof cd.artUrl === "string" ? cd.artUrl : "",
     layout: inferLayout(cd),
     faceTemplate: inferFaceTemplate(cd),
     frameColor: (Array.isArray(cd.frameColor) ? cd.frameColor[0] : cd.frameColor) ?? "",
