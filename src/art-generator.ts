@@ -1,15 +1,16 @@
 import Replicate from "replicate";
-import { v4 as uuid } from "uuid";
-import { uploadFromUrl } from "./s3-storage.js";
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
-/** Generate art, upload to S3, return public URL. */
+/**
+ * Generate art via Replicate. Returns the image bytes as a Buffer (no S3
+ * upload here — `persistGeneratedCard` uploads in the background).
+ */
 export async function generateArt(
   artDescription: string,
   width: number,
   height: number
-): Promise<string> {
+): Promise<Buffer> {
   const fullPrompt =
     artDescription.replace(/\.$/, "") +
     ". In the style of high quality epic fantasy digital art";
@@ -29,21 +30,21 @@ export async function generateArt(
   });
 
   console.log(`[Art] Generated in ${((Date.now() - start) / 1000).toFixed(2)}s`);
-
-  const tempUrl = output as unknown as string;
-  const s3Key = `art/${uuid()}.png`;
-  const publicUrl = await uploadFromUrl(tempUrl, s3Key);
-  console.log(`[Art] Uploaded: ${s3Key}`);
-  return publicUrl;
+  return fetchToBuffer(output as unknown as string);
 }
 
-/** Edit existing art via Flux Kontext, upload to S3, return public URL. */
+/**
+ * Edit existing art via Flux Kontext. `inputArt` may be an existing URL
+ * (e.g. an S3 URL from a stored card) or a Buffer (e.g. the just-generated
+ * art for the other face); the Replicate SDK accepts both for file inputs.
+ * Returns the edited image as a Buffer.
+ */
 export async function editArt(
   artDescription: string,
-  originalArtUrl: string,
+  inputArt: string | Buffer,
   targetWidth?: number,
   targetHeight?: number,
-): Promise<string> {
+): Promise<Buffer> {
   const aspectRatio = (targetWidth && targetHeight)
     ? closestKontextRatio(targetWidth, targetHeight)
     : "match_input_image";
@@ -54,16 +55,18 @@ export async function editArt(
   const output = await replicate.run("black-forest-labs/flux-kontext-pro", {
     input: {
       prompt: artDescription,
-      input_image: originalArtUrl,
+      input_image: inputArt,
       aspect_ratio: aspectRatio,
     },
   });
 
   console.log(`[Art] Edited in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+  return fetchToBuffer(output as unknown as string);
+}
 
-  const tempUrl = output as unknown as string;
-  const s3Key = `art/${uuid()}.png`;
-  return uploadFromUrl(tempUrl, s3Key);
+async function fetchToBuffer(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  return Buffer.from(await response.arrayBuffer());
 }
 
 const KONTEXT_RATIOS = [
@@ -109,4 +112,3 @@ function fitDimensions(
     h: Math.round(height * scale),
   };
 }
-

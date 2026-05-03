@@ -13,16 +13,21 @@ import {
   getCard,
   commitCard,
 } from "./card-table.js";
+import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
-/** Resolve art URL for a single face given its directive and the other face's context. */
+/**
+ * Resolve art for a single face. Returns:
+ *   - `Buffer` for a freshly generated/edited image (needs to be uploaded later)
+ *   - `string` for a reused S3 URL from an existing card (no upload needed)
+ */
 async function resolveFaceArt(
   face: CardData,
   directive: ArtDirective,
   dims: { width: number; height: number } | undefined,
   selfOriginalUrl: string | undefined,
   otherOriginalUrl: string | undefined,
-  otherNewUrl: string | undefined,
-): Promise<string | undefined> {
+  otherNew: string | Buffer | undefined,
+): Promise<string | Buffer | undefined> {
   if (!dims) return undefined; // single-art layout (e.g. Adventure); skip this face
   const { width, height } = dims;
   const desc = face.artDescription ?? "";
@@ -30,7 +35,6 @@ async function resolveFaceArt(
   switch (directive) {
     case "keep_self":
       if (selfOriginalUrl) return selfOriginalUrl;
-      // fallthrough: nothing to keep, generate
       return desc ? generateArt(desc, width, height) : undefined;
     case "keep_other":
       if (otherOriginalUrl) return otherOriginalUrl;
@@ -40,7 +44,7 @@ async function resolveFaceArt(
         ? editArt(desc, selfOriginalUrl, width, height)
         : desc ? generateArt(desc, width, height) : undefined;
     case "edit_other": {
-      const src = otherNewUrl ?? otherOriginalUrl;
+      const src = otherNew ?? otherOriginalUrl;
       return src && desc
         ? editArt(desc, src, width, height)
         : desc ? generateArt(desc, width, height) : undefined;
@@ -63,17 +67,17 @@ async function generateArtForAllFaces(
   const faces = [cardData, cardData.linkedCard].filter((f): f is CardData => !!f);
   const faceDims = [dims.primaryArtDimensions, dims.secondaryArtDimensions];
   const originalFaces = [originalCard?.cardData, originalCard?.cardData.linkedCard];
-  // crucible 0.3.5 widened artUrl to string | Buffer; we only ever store string URLs.
+  // crucible 0.3.5 widened artUrl to string | Buffer; we only ever store string URLs in DDB.
   const origUrls = originalFaces.map((f) => (typeof f?.artUrl === "string" ? f.artUrl : undefined));
   const directives = faces.map((_, i) => artDirectives[i] ?? "generate");
 
-  const newUrls: (string | undefined)[] = new Array(faces.length).fill(undefined);
+  const newArt: (string | Buffer | undefined)[] = new Array(faces.length).fill(undefined);
 
   // Pass 1: resolve faces that don't depend on the other face's new art.
   await Promise.all(
     faces.map(async (face, i) => {
       if (directives[i] === "edit_other") return;
-      newUrls[i] = await resolveFaceArt(
+      newArt[i] = await resolveFaceArt(
         face,
         directives[i],
         faceDims[i],
@@ -84,24 +88,38 @@ async function generateArtForAllFaces(
     })
   );
 
-  // Pass 2: resolve edit_other faces (can now reference the other face's new URL).
+  // Pass 2: resolve edit_other faces (can now reference the other face's new art).
   for (let i = 0; i < faces.length; i++) {
     if (directives[i] !== "edit_other") continue;
-    newUrls[i] = await resolveFaceArt(
+    newArt[i] = await resolveFaceArt(
       faces[i],
       directives[i],
       faceDims[i],
       origUrls[i],
       origUrls[1 - i],
-      newUrls[1 - i],
+      newArt[1 - i],
     );
   }
 
-  // Apply
-  if (newUrls[0] && !cardData.artUrl) cardData.artUrl = newUrls[0];
-  if (newUrls[1] && cardData.linkedCard && !cardData.linkedCard.artUrl) {
-    cardData.linkedCard.artUrl = newUrls[1];
+  // Apply (Buffer or string — renderer accepts both).
+  if (newArt[0] && !cardData.artUrl) cardData.artUrl = newArt[0];
+  if (newArt[1] && cardData.linkedCard && !cardData.linkedCard.artUrl) {
+    cardData.linkedCard.artUrl = newArt[1];
   }
+}
+
+/** Pre-upload step: replace each Buffer artUrl on cardData with its future S3 URL. */
+function reserveArtUrls(cardData: CardData): { buffer: Buffer; key: string }[] {
+  const pending: { buffer: Buffer; key: string }[] = [];
+  for (const face of [cardData, cardData.linkedCard]) {
+    if (!face) continue;
+    if (Buffer.isBuffer(face.artUrl)) {
+      const key = `art/${uuid()}.png`;
+      pending.push({ buffer: face.artUrl, key });
+      face.artUrl = getPublicUrl(key);
+    }
+  }
+  return pending;
 }
 
 /** Copy typeLine and linkType from normalizedCardData onto the cardData. */
@@ -113,8 +131,12 @@ function applyNormalizedFields(cardData: CardData, normalized: CardData): void {
 /** Result of phase 1 (LLM + art + render). Holds image buffers, not S3 URLs. */
 export interface GeneratedCard {
   cardId: string;
+  /** Art urls on cardData are already future S3 URLs (strings); the actual
+   *  bytes for those URLs live in `pendingArtUploads` and are uploaded by
+   *  `persistGeneratedCard`. */
   cardData: CardData;
   rendered: RenderedCard;
+  pendingArtUploads: { buffer: Buffer; key: string }[];
   prompt: string;
   creatorId: string;
   parentId?: string;
@@ -142,6 +164,13 @@ export function buildCardRecord(g: GeneratedCard, renderedUrls: string[]): CardR
   };
 }
 
+async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const start = Date.now();
+  const result = await fn();
+  console.log(`[Pipeline] phase ${label}: ${((Date.now() - start) / 1000).toFixed(2)}s`);
+  return result;
+}
+
 /** Phase 1: LLM, art, render. Returns image buffers — no S3, no DDB. */
 export async function generateRenderedCard(
   description: string,
@@ -150,6 +179,7 @@ export async function generateRenderedCard(
   mode: "create" | "edit" | "copy",
 ): Promise<GeneratedCard> {
   const cardId = uuid();
+  const totalStart = Date.now();
   console.log(`[Pipeline] ${mode} card ${cardId}`);
 
   let originalCard: CardDocument | undefined;
@@ -160,10 +190,10 @@ export async function generateRenderedCard(
     originalCrucibleText = originalCard.crucibleText;
   }
 
-  console.log("[Pipeline] 1. LLM");
-  const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
+  const llmResult = await timed("LLM", () =>
+    llmCreateCard(description, originalCrucibleText, mode)
+  );
 
-  console.log("[Pipeline] 2. CardData");
   const cardData = llmResult.cardData;
   cardData.artist = "prunaai/p-image";
   cardData.designer = "thismagiccarddoesnotexist.com";
@@ -171,19 +201,27 @@ export async function generateRenderedCard(
     cardData.linkedCard.artist = "prunaai/p-image";
     cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
   }
-  console.log("[Pipeline] Card:", cardData.name);
+  console.log(`[Pipeline] Card: ${cardData.name} | art directives: ${llmResult.artDirectives.join(",")}`);
 
-  console.log("[Pipeline] 3. Art", llmResult.artDirectives);
-  await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
+  await timed("Art", () =>
+    generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard)
+  );
 
-  console.log("[Pipeline] 4. Render");
-  const rendered = await renderCardOnly(cardData);
+  const rendered = await timed("Render", () => renderCardOnly(cardData));
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
+
+  // Renderer is done with the Buffer artUrls; swap each Buffer for its
+  // future S3 URL on cardData so the response (and DDB record) carries
+  // proper string URLs. The bytes are queued for the persist phase.
+  const pendingArtUploads = reserveArtUrls(cardData);
+
+  console.log(`[Pipeline] Generated in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 
   return {
     cardId,
     cardData,
     rendered,
+    pendingArtUploads,
     prompt: description,
     creatorId,
     parentId: originalCardId,
@@ -192,12 +230,19 @@ export async function generateRenderedCard(
   };
 }
 
-/** Phase 2: upload faces to S3, write CardRecord to DDB. Safe to run after streaming the response. */
+/** Phase 2: upload all art + rendered faces to S3, write CardRecord to DDB. */
 export async function persistGeneratedCard(g: GeneratedCard): Promise<CardRecord> {
-  console.log("[Pipeline] 5. Upload + Store");
-  const renderedUrls = await uploadFaces(g.rendered);
+  const start = Date.now();
+  const [renderedUrls] = await Promise.all([
+    timed("S3 upload (rendered faces)", () => uploadFaces(g.rendered)),
+    timed("S3 upload (art)", () =>
+      Promise.all(g.pendingArtUploads.map((p) => uploadBuffer(p.buffer, p.key, "image/png")))
+    ),
+  ]);
   const record = buildCardRecord(g, renderedUrls);
-  await commitCard(record, g.mode === "edit" ? g.parentId : undefined);
-  console.log(`[Pipeline] Done: ${g.cardId}`);
+  await timed("DDB commit", () =>
+    commitCard(record, g.mode === "edit" ? g.parentId : undefined)
+  );
+  console.log(`[Pipeline] Persisted in ${((Date.now() - start) / 1000).toFixed(2)}s: ${g.cardId}`);
   return record;
 }

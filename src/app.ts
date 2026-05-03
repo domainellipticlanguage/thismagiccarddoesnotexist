@@ -110,6 +110,7 @@ app.post("/api/cards", async (c) => {
   // the stream is still open. The client's perceived latency drops by the
   // duration of those writes.
   return stream(c, async (s) => {
+    const reqStart = Date.now();
     try {
       const generated = await generateRenderedCard(
         body.description,
@@ -137,10 +138,13 @@ app.post("/api/cards", async (c) => {
       // waiting for the stream to close (which it won't until persistence
       // finishes).
       await s.write(JSON.stringify(responsePayload) + "\n");
+      const flushedAt = Date.now();
+      console.log(`[Request] flushed at ${((flushedAt - reqStart) / 1000).toFixed(2)}s`);
 
       // Persistence runs after the flush. The function stays alive (and
       // billed) until this resolves, but the client already has the card.
       await persistGeneratedCard(generated);
+      console.log(`[Request] complete in ${((Date.now() - reqStart) / 1000).toFixed(2)}s (persist took ${((Date.now() - flushedAt) / 1000).toFixed(2)}s after flush)`);
     } catch (err: any) {
       console.error("[API] POST create error:", err);
       // Best-effort: report the error in the stream. If we already sent

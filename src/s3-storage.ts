@@ -11,6 +11,7 @@ export async function uploadBuffer(
   key: string,
   contentType = "image/png"
 ): Promise<string> {
+  const start = Date.now();
   await s3.send(
     new PutObjectCommand({
       Bucket: bucketName(),
@@ -19,6 +20,7 @@ export async function uploadBuffer(
       ContentType: contentType,
     })
   );
+  console.log(`[S3] put ${key} (${(buffer.length / 1024).toFixed(0)}kb) in ${((Date.now() - start) / 1000).toFixed(2)}s`);
   return getPublicUrl(key);
 }
 
