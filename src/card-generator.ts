@@ -216,6 +216,45 @@ export async function generateRenderedCard(
   };
 }
 
+/** Advanced edit: re-render `cardData` against an existing card (no LLM, no new art). */
+export async function applyFieldEdits(
+  cardData: CardData,
+  original: CardDocument,
+  creatorId: string,
+): Promise<CardRecord> {
+  const cardId = uuid();
+  console.log(`[Pipeline] field edit ${cardId} (parent ${original.id})`);
+
+  // The form may not re-emit artUrl per face — inherit from the original
+  // so the renderer has art to draw with.
+  if (!cardData.artUrl && typeof original.cardData.artUrl === "string") {
+    cardData.artUrl = original.cardData.artUrl;
+  }
+  if (
+    cardData.linkedCard &&
+    !cardData.linkedCard.artUrl &&
+    typeof original.cardData.linkedCard?.artUrl === "string"
+  ) {
+    cardData.linkedCard.artUrl = original.cardData.linkedCard.artUrl;
+  }
+
+  const rendered = await renderCardOnly(cardData);
+  applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
+  const pendingArtUploads = reserveArtUrls(cardData);
+
+  return persistGeneratedCard({
+    cardId,
+    cardData,
+    rendered,
+    pendingArtUploads,
+    prompt: original.prompt,
+    creatorId,
+    parentId: original.id,
+    mode: "edit",
+    createdDate: new Date().toISOString(),
+  });
+}
+
 /** Phase 2: upload all art + rendered faces to S3, write CardRecord to DDB. */
 export async function persistGeneratedCard(g: GeneratedCard): Promise<CardRecord> {
   const [renderedUrls] = await Promise.all([

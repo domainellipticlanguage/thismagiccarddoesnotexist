@@ -14,12 +14,14 @@ import {
   generateRenderedCard,
   persistGeneratedCard,
   buildCardRecord,
+  applyFieldEdits,
 } from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
 import type {
   CreateCardRequest,
   CardResponse,
 } from "./types.js";
+import type { CardData } from "mtg-crucible";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -88,6 +90,33 @@ app.delete("/api/cards/:id", async (c) => {
     return c.json({ success: true });
   } catch (err: any) {
     console.error("[API] DELETE error:", err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.post("/api/cards/:id/edit", async (c) => {
+  let body: { cardData?: CardData };
+  try {
+    body = (await c.req.json()) as { cardData?: CardData };
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  if (!body.cardData) return c.json({ error: "cardData is required" }, 400);
+
+  try {
+    const id = c.req.param("id");
+    const original = await getCard(id);
+    if (!original) return c.json({ error: "Card not found" }, 404);
+
+    const creatorId = getCreatorId(c);
+    if (!isDebug() && original.creatorId !== creatorId) {
+      return c.json({ error: "Not authorized" }, 403);
+    }
+
+    const newCard = await applyFieldEdits(body.cardData, original, creatorId);
+    return c.json({ card_id: newCard.id });
+  } catch (err: any) {
+    console.error("[API] POST edit error:", err);
     return c.json({ error: err.message }, 500);
   }
 });
