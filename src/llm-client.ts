@@ -77,25 +77,41 @@ const CARD_SCHEMA: OpenAI.FunctionParameters = {
   },
 };
 
+const CARDS_SCHEMA: OpenAI.FunctionParameters = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards"],
+  properties: {
+    cards: {
+      type: "array",
+      minItems: 1,
+      maxItems: 2,
+      items: CARD_SCHEMA,
+    },
+  },
+};
+
+// Groq path: response_format with strict json_schema. Constrained decoding on
+// gpt-oss-120b guarantees schema adherence — no malformed tool calls to patch.
+// (Groq docs: tool use does NOT support structured outputs, only response_format.
+//  https://console.groq.com/docs/structured-outputs)
+const DESIGN_CARD_RESPONSE_FORMAT = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "design_card",
+    strict: true,
+    schema: CARDS_SCHEMA,
+  },
+};
+
+// Anthropic path: tools, since Anthropic enforces tool input_schema strictly.
 const DESIGN_CARD_TOOL: OpenAI.ChatCompletionTool = {
   type: "function",
   function: {
     name: "design_card",
     description: "Design a Magic: The Gathering card.",
     strict: true,
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      required: ["cards"],
-      properties: {
-        cards: {
-          type: "array",
-          minItems: 1,
-          maxItems: 2,
-          items: CARD_SCHEMA,
-        },
-      },
-    },
+    parameters: CARDS_SCHEMA,
   },
 };
 
@@ -133,6 +149,11 @@ interface LLMCard {
 const blank = (s: string | undefined): string | undefined => (s && s !== "") ? s : undefined;
 const expandTilde = (s: string | undefined, name: string): string | undefined =>
   s ? s.replace(/~/g, name) : s;
+// Models occasionally emit the literal two-character sequence "\n" inside abilities
+// instead of an actual newline, which the renderer then draws as "\n" mid-line.
+// Crucible doesn't normalize this, so we do it at the boundary.
+const unescapeNewlines = (s: string | undefined): string | undefined =>
+  s ? s.replace(/\\n/g, "\n") : s;
 
 function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
   return {
@@ -140,8 +161,8 @@ function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
     manaCost: blank(card.manaCost),
     typeLine: card.typeLine,
     rarity: card.rarity as Rarity,
-    abilities: expandTilde(blank(card.abilities), card.name),
-    flavorText: blank(card.flavorText),
+    abilities: expandTilde(unescapeNewlines(blank(card.abilities)), card.name),
+    flavorText: unescapeNewlines(blank(card.flavorText)),
     artDescription: card.artDescription,
     colorIndicator: parseColorIndicator(blank(card.colorIndicator)),
     power: blank(card.power),
@@ -156,10 +177,10 @@ function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
 // System prompts
 // ---------------------------------------------------------------------------
 
-export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Call the design_card tool with a \`cards\` array.
+export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Output a JSON object with a \`cards\` array.
 
 ## Shape
-- \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse, etc.).
+- \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse, battle, etc.).
 - Every field on every card must be present. For fields that don't apply, use "" (empty string):
 - Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name.
 - To keep the card readable, only write flavor text when the rules text is short and the flavor genuinely adds something.
@@ -183,9 +204,10 @@ Make sure the power of the effect is appropriate for the card's rarity and cost.
 ## Technical
 - Use standard MTG symbols e.g. {W}{U}{B}{R}{G}, {C}, {S}, {1}, {2}, {X}, {T}, {E}, etc.
 - typeLine is the FULL line: "Legendary Creature — Human Wizard".
-- abilities: one per line. Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II,IV — text".
+- abilities: one ability per line, separated by real newline characters in the JSON string (not the literal characters backslash-n). Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II,IV — text".
 - In abilities, refer to the card by its full name OR \`~\`
 - Transform back faces: \`manaCost: ""\` and colorIndicator is set (e.g. "G", "UB").
+- Battle — Siege is a 2-card structure. Card 1: typeLine "Battle — Siege", \`battleDefense\` set. The first ability line is reminder text "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it’s defeated, exile it, then cast it transformed.)". Card 2: the post-defeat permanent (creature, enchantment, etc.), \`manaCost: ""\`, colorIndicator set.
 
 ## New mechanic: Prepared
 Prepared is a 2-card mechanic. Like Adventure, a permanent card has a paired instant or sorcery in \`cards[1]\`. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared.
@@ -227,27 +249,32 @@ function formatCardAbilities(ab: CardData["abilities"]): string {
 }
 
 /** Convert one CardData face to the LLMCard shape (the tool-call output schema),
- *  minus `artDirective` — that's a directive for the next render, not state. */
-function faceToLLMCard(cd: CardData): Omit<LLMCard, "artDirective"> {
-  return {
-    name: cd.name ?? "",
-    manaCost: cd.manaCost ?? "",
-    typeLine: formatCardTypeLine(cd.typeLine),
-    abilities: formatCardAbilities(cd.abilities),
-    flavorText: cd.flavorText ?? "",
-    artDescription: cd.artDescription ?? "",
-    rarity: cd.rarity ?? "",
-    colorIndicator: formatColorIndicator(cd.colorIndicator),
-    power: cd.power ?? "",
-    toughness: cd.toughness ?? "",
-    startingLoyalty: cd.startingLoyalty ?? "",
-    battleDefense: cd.battleDefense ?? "",
+ *  minus `artDirective` — that's a directive for the next render, not state.
+ *  Empty/absent fields are dropped: the strict tool schema rejects "" for rarity,
+ *  and showing a back face with `"rarity": ""` made models echo that into output. */
+function faceToLLMCard(cd: CardData): Partial<Omit<LLMCard, "artDirective">> {
+  const out: Partial<Omit<LLMCard, "artDirective">> = {};
+  const set = <K extends keyof Omit<LLMCard, "artDirective">>(k: K, v: string | undefined) => {
+    if (v) out[k] = v as Omit<LLMCard, "artDirective">[K];
   };
+  set("name", cd.name);
+  set("manaCost", cd.manaCost);
+  set("typeLine", formatCardTypeLine(cd.typeLine));
+  set("abilities", formatCardAbilities(cd.abilities));
+  set("flavorText", cd.flavorText);
+  set("artDescription", cd.artDescription);
+  set("rarity", cd.rarity);
+  set("colorIndicator", formatColorIndicator(cd.colorIndicator));
+  set("power", cd.power);
+  set("toughness", cd.toughness);
+  set("startingLoyalty", cd.startingLoyalty);
+  set("battleDefense", cd.battleDefense);
+  return out;
 }
 
 /** Serialize a CardData (with optional linked face) as the `cards` array the LLM emits. */
 export function cardDataToLLMCardsJson(cd: CardData): string {
-  const cards: Array<Omit<LLMCard, "artDirective">> = [faceToLLMCard(cd)];
+  const cards: Array<Partial<Omit<LLMCard, "artDirective">>> = [faceToLLMCard(cd)];
   if (cd.linkedCard) cards.push(faceToLLMCard(cd.linkedCard));
   return JSON.stringify({ cards }, null, 2);
 }
@@ -321,17 +348,14 @@ export async function callLLM(
   const response = await client.chat.completions.create({
     model,
     messages,
-    tools: [DESIGN_CARD_TOOL],
-    tool_choice: { type: "function", function: { name: "design_card" } },
+    response_format: DESIGN_CARD_RESPONSE_FORMAT,
   });
 
   const latencyMs = Date.now() - start;
-  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-  if (!toolCall || toolCall.function.name !== "design_card") {
-    throw new Error("LLM did not call design_card tool");
-  }
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("LLM returned no content");
 
-  const args = JSON.parse(toolCall.function.arguments);
+  const args = JSON.parse(content);
   return { response: parseArgs(args), rawArgs: args, latencyMs };
 }
 

@@ -48,3 +48,7 @@ npm run deploy           # Build + deploy to AWS Lambda
 - Express serves both API and built React bundle (like Flask in v2)
 - Frontend CANNOT import crucible runtime functions (they need Node/canvas)
 - Frontend only imports crucible TYPES
+
+# Pet Peevs
+There is never a need for you to touch the .env file. If some api keys are missing, so be it, we will receive an error and then the user can fix it. Touching .env.example is fine of course.
+
