@@ -15,6 +15,14 @@ import {
 } from "./card-table.js";
 import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
+/** True if this face has the "Room" subtype — they get a single panoramic landscape. */
+function isRoomFace(face: CardData): boolean {
+  const tl = face.typeLine;
+  if (!tl) return false;
+  if (typeof tl === "string") return /\bRoom\b/i.test(tl);
+  return tl.subtypes?.some((s) => s.toLowerCase() === "room") ?? false;
+}
+
 /**
  * Resolve art for a single face. Returns:
  *   - `Buffer` for a freshly generated/edited image (needs to be uploaded later)
@@ -30,7 +38,10 @@ async function resolveFaceArt(
 ): Promise<string | Buffer | undefined> {
   if (!dims) return undefined; // single-art layout (e.g. Adventure); skip this face
   const { width, height } = dims;
-  const desc = face.artDescription ?? "";
+  const baseDesc = face.artDescription ?? "";
+  // Rooms render the art across both door panels — steer the model toward a wide
+  // single landscape rather than a portrait scene.
+  const desc = baseDesc && isRoomFace(face) ? `${baseDesc}, panoramic landscape` : baseDesc;
 
   switch (directive) {
     case "keep_self":
@@ -175,14 +186,12 @@ export async function generateRenderedCard(
   console.log(`[Pipeline] start ${cardId} ${mode}`);
 
   let originalCard: CardDocument | undefined;
-  let originalCrucibleText: string | undefined;
   if (originalCardId && (mode === "edit" || mode === "copy")) {
     originalCard = await getCard(originalCardId);
     if (!originalCard) throw new Error(`Original card ${originalCardId} not found`);
-    originalCrucibleText = originalCard.crucibleText;
   }
 
-  const llmResult = await llmCreateCard(description, originalCrucibleText, mode);
+  const llmResult = await llmCreateCard(description, originalCard?.cardData, mode);
 
   const cardData = llmResult.cardData;
   cardData.artist = "prunaai/p-image";

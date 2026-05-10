@@ -209,16 +209,8 @@ app.get("/api/eval/system-prompts", (c) => {
   const f = path.join(evalDir, "..", "src", "llm-client.ts");
   if (!existsSync(f)) return c.json({});
   const src = readFileSync(f, "utf-8");
-  const prompts: Record<string, string> = {};
-  const re = /(\w+):\s*`([\s\S]*?)`/g;
-  let m;
-  const objMatch = src.match(/export const SYSTEM_PROMPTS\s*=\s*\{([\s\S]*?)\n\};/);
-  if (objMatch) {
-    while ((m = re.exec(objMatch[1])) !== null) {
-      prompts[m[1]] = m[2];
-    }
-  }
-  return c.json(prompts);
+  const m = src.match(/export const SYSTEM_PROMPT\s*=\s*`([\s\S]*?)`;/);
+  return c.json(m ? { SYSTEM_PROMPT: m[1] } : {});
 });
 
 app.get("/api/eval/prompts", (c) => {

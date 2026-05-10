@@ -44,7 +44,7 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
         <div className="flex gap-3 pt-2">
           {canEdit && (
             <>
-              <Link to={`/card/${card.id}/edit`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Edit with AI</Link>
+              <Link to={`/card/${card.id}/edit`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Edit</Link>
               <Link to={`/card/${card.id}/copy`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Copy & Remix</Link>
             </>
           )}

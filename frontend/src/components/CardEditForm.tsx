@@ -32,7 +32,7 @@ const SUPERTYPES = SUPERTYPES_LIST;
 // Layout + Face Template types (form-only, mapped to/from CardData on save/load)
 // ---------------------------------------------------------------------------
 
-type Layout = "single" | "transform" | "mdfc" | "adventure" | "split" | "fuse" | "aftermath" | "flip";
+type Layout = "single" | "transform" | "mdfc" | "adventure" | "split" | "fuse" | "aftermath" | "flip" | "prepare" | "room";
 
 type FaceTemplate = "" | "standard" | "planeswalker" | "saga" | "class"
   | "leveler" | "prototype" | "mutate" | "battle";
@@ -46,12 +46,16 @@ const LAYOUT_OPTIONS: { label: string; value: Layout }[] = [
   { label: "Fuse", value: "fuse" },
   { label: "Aftermath", value: "aftermath" },
   { label: "Flip", value: "flip" },
+  { label: "Prepare", value: "prepare" },
+  { label: "Room", value: "room" },
 ];
 
 const LAYOUT_TO_LINK_TYPE: Record<Layout, LinkType | undefined> = {
   single: undefined, transform: "transform", mdfc: "modal_dfc",
   adventure: "adventure", split: "split", fuse: "fuse",
-  aftermath: "aftermath", flip: "flip",
+  aftermath: "aftermath", flip: "flip", prepare: "prepare",
+  // Rooms are split-linked enchantments; both faces also need cardTemplate: "room".
+  room: "split",
 };
 
 const FACE_TEMPLATES: { label: string; value: FaceTemplate }[] = [
@@ -68,10 +72,14 @@ const FACE_TEMPLATES: { label: string; value: FaceTemplate }[] = [
 
 /** Reverse-map CardData to Layout for form initialization. */
 function inferLayout(cd: CardData): Layout {
+  // A linkType=split card with cardTemplate=room (on either face) is a Room layout,
+  // not a generic Split.
+  if (cd.cardTemplate === "room" || cd.linkedCard?.cardTemplate === "room") return "room";
   if (cd.linkType) {
     const map: Partial<Record<LinkType, Layout>> = {
       transform: "transform", modal_dfc: "mdfc", adventure: "adventure",
       split: "split", fuse: "fuse", flip: "flip", aftermath: "aftermath",
+      prepare: "prepare",
     };
     return map[cd.linkType] ?? "single";
   }
@@ -81,7 +89,7 @@ function inferLayout(cd: CardData): Layout {
       transform_front: "transform", transform_back: "transform",
       mdfc_front: "mdfc", mdfc_back: "mdfc",
       adventure: "adventure", split: "split", fuse: "fuse",
-      flip: "flip", aftermath: "aftermath",
+      flip: "flip", aftermath: "aftermath", prepare: "prepare",
     };
     if (map[t]) return map[t]!;
   }
@@ -97,7 +105,7 @@ function inferFaceTemplate(cd: CardData): FaceTemplate {
   // Layout-level templates → auto-detect (the layout handles these)
   const layoutTemplates: TemplateName[] = [
     "transform_front", "transform_back", "mdfc_front", "mdfc_back",
-    "adventure", "split", "fuse", "flip", "aftermath",
+    "adventure", "split", "fuse", "flip", "aftermath", "prepare", "room",
   ];
   if (layoutTemplates.includes(t)) return "";
   if (t === "planeswalker_tall") return "planeswalker";
@@ -110,7 +118,8 @@ function resolveFormTemplate(layout: Layout, faceTemplate: FaceTemplate): Templa
     // For single-image layouts that are templates themselves, use the layout name
     const layoutAsTemplate: Partial<Record<Layout, TemplateName>> = {
       adventure: "adventure", split: "split", fuse: "fuse",
-      aftermath: "aftermath", flip: "flip",
+      aftermath: "aftermath", flip: "flip", prepare: "prepare",
+      room: "room",
     };
     if (layoutAsTemplate[layout]) return layoutAsTemplate[layout];
     // For transform/mdfc/single with standard/auto: let crucible auto-detect
@@ -630,16 +639,20 @@ interface FormState {
   designer: string;
 }
 
-function linkedFormToCardData(linked: LinkedFormState): CardData {
+function linkedFormToCardData(linked: LinkedFormState, layout: Layout): CardData {
   const subtypes = linked.subtypes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
   const isCreature = linked.types.includes("creature");
   const isPw = linked.types.includes("planeswalker");
   const isBattle = linked.types.includes("battle");
+  // Rooms: both faces must use the room template, regardless of the linked face's
+  // own dropdown choice.
+  const cardTemplate: TemplateName | undefined =
+    layout === "room" ? "room" : (linked.faceTemplate ? linked.faceTemplate as TemplateName : undefined);
   const cd: CardData = {
     name: linked.name || undefined,
     manaCost: linked.manaCost || undefined,
     typeLine: { supertypes: [], types: linked.types, subtypes },
-    cardTemplate: linked.faceTemplate ? linked.faceTemplate as TemplateName : undefined,
+    cardTemplate,
     abilities: linked.abilitiesText.trim() || undefined,
     power: isCreature && linked.power ? linked.power : undefined,
     toughness: isCreature && linked.toughness ? linked.toughness : undefined,
@@ -684,7 +697,7 @@ function buildCardData(form: FormState, linkedForm?: LinkedFormState, abilities?
     ptBoxColor: form.ptBoxColor || undefined,
     // Link — derived from layout
     linkType: linkType,
-    linkedCard: hasLinked && linkedForm ? linkedFormToCardData(linkedForm) : undefined,
+    linkedCard: hasLinked && linkedForm ? linkedFormToCardData(linkedForm, form.layout) : undefined,
     // Metadata
     artist: form.artist || undefined,
     setCode: form.setCode || undefined,
@@ -1027,7 +1040,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
       {hasLinkedCard && (
         <details className="border border-neutral-800 rounded-lg" open>
           <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
-            {form.layout === "adventure" ? "Adventure Spell" : "Back Face"} ({form.layout})
+            {form.layout === "adventure" ? "Adventure Spell" : form.layout === "prepare" ? "Prepare Spell" : form.layout === "room" ? "Door 2" : "Back Face"} ({form.layout})
           </summary>
           <div className="px-4 pb-4 pt-2 space-y-3">
             <LinkedCardEditor form={linkedForm} onChange={setLinkedForm} loading={loading} />
@@ -1151,7 +1164,8 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
       {/* Submit */}
       <div className="flex gap-3">
         <button type="submit" disabled={loading}
-          className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2">
+          {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
           {loading ? "Saving..." : "Save & Re-render"}
         </button>
       </div>

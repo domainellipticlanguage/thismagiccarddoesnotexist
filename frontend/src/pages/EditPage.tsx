@@ -24,12 +24,23 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   }, [id]);
 
   async function handleAIEdit(description: string) {
-    if (!id) return;
+    if (!currentId) return;
     setSaving(true); setError(null);
     try {
-      const response = await createCard(description, id, mode);
-      navigate(`/card/${response.card.id}`, { state: response });
-    } catch (err: any) { setError(err.message); setSaving(false); }
+      const response = await createCard(description, currentId, mode);
+      if (mode === "copy") {
+        // Copy creates a separate card; viewing it on its own page makes sense.
+        navigate(`/card/${response.card.id}`, { state: response });
+        return;
+      }
+      // Edit: stay on the edit page so the user can keep iterating.
+      setCard(response.card);
+      setCurrentId(response.card.id);
+      window.history.replaceState(null, "", `/card/${response.card.id}/edit`);
+    } catch (err: any) {
+      setError(err.message);
+      throw err; // Let CreateForm know not to clear the textarea.
+    } finally { setSaving(false); }
   }
 
   async function handleAdvancedSave(cardData: CardData) {
@@ -62,20 +73,19 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
           </div>
         )}
       </div>
-      {saving && editMode === "ai" ? (
-        <LoadingSpinner fullScreen message={mode === "copy" ? "Creating remix..." : "AI is editing your card..."} />
+      {saving && mode === "copy" ? (
+        <LoadingSpinner fullScreen message="Creating remix..." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 relative">
+          <div className="lg:col-span-1">
             {card.display && <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />}
-            {saving && <div className="absolute inset-0 bg-neutral-950/60 rounded-lg flex items-center justify-center"><LoadingSpinner message="Re-rendering..." /></div>}
           </div>
           <div className="lg:col-span-2">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
             {mode === "copy" || editMode === "ai" ? (
               <div>
                 <p className="text-sm text-neutral-400 mb-4">{mode === "copy" ? "Describe how you want to remix this card." : "Describe the changes you want to make."}</p>
-                <CreateForm onSubmit={handleAIEdit} loading={saving} />
+                <CreateForm onSubmit={handleAIEdit} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Submit Edits"} />
               </div>
             ) : (
               <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} />

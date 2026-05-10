@@ -23,11 +23,23 @@ const IDEAS = [
   "A sorcery with Prepare that destroys a creature",
 ];
 
-export function CreateForm({ onSubmit, loading }: { onSubmit: (desc: string) => void; loading: boolean }) {
+export function CreateForm({ onSubmit, loading, submitLabel = "Create Card" }: { onSubmit: (desc: string) => void | Promise<void>; loading: boolean; submitLabel?: string }) {
   const [description, setDescription] = useState("");
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const text = description.trim();
+    if (!text || loading) return;
+    try {
+      await onSubmit(text);
+      setDescription("");
+    } catch {
+      // Parent surfaces the error; keep the text so the user can retry.
+    }
+  }
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (description.trim() && !loading) onSubmit(description.trim()); }} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="description" className="block text-sm font-medium text-neutral-300 mb-2">Describe your card</label>
         <textarea
@@ -41,8 +53,9 @@ export function CreateForm({ onSubmit, loading }: { onSubmit: (desc: string) => 
         />
       </div>
       <div className="flex gap-3 items-center">
-        <button type="submit" disabled={!description.trim() || loading} className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-          {loading ? "Generating..." : "Create Card"}
+        <button type="submit" disabled={!description.trim() || loading} className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2">
+          {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
+          {loading ? "Generating..." : submitLabel}
         </button>
         <button type="button" onClick={() => setDescription(IDEAS[Math.floor(Math.random() * IDEAS.length)])} disabled={loading} className="px-4 py-2.5 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 transition-colors text-sm">
           Suggest an idea
