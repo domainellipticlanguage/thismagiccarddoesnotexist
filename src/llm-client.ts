@@ -266,7 +266,8 @@ export function cardDataToLLMCardsJson(cd: CardData): string {
 const INTENT_BY_MODE: Record<string, string> = {
   create: "Generate a new Magic: The Gathering card.",
   edit: "Edit the card below. Only change what the user asks for; keep everything else the same.",
-  copy: "Create a variation of the card below based on the user's request. Change the name and art too.",
+  // TODO maybe just remove this?
+  copy: "Edit the card below. Only change what the user asks for; keep everything else the same.",
 };
 
 function buildMessages(
