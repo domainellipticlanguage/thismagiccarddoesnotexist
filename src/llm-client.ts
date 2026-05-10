@@ -161,22 +161,16 @@ export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Call
 ## Shape
 - \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse, etc.).
 - Every field on every card must be present. For fields that don't apply, use "" (empty string):
-  - Lands and back faces (transform, MDFC): \`manaCost: ""\`
-  - Non-creatures: \`power: ""\`, \`toughness: ""\`
-  - Non-planeswalkers: \`startingLoyalty: ""\`
-  - Non-battles: \`battleDefense: ""\`
-  - Vanilla creatures with no rules text: \`abilities: ""\`
-- \`colorIndicator\`: leave \`""\` on single-faced cards with a normal manaCost. Only set it when there is no manaCost (back faces) OR when color identity is broader than manaCost. Never set it just to restate manaCost colors.
-- Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name — use two cards, one named "Wine", one named "Dine".
-- If the abilities text is already rich or long, set \`flavorText: ""\` to keep the card readable. Only write flavor text when the rules text is short and the flavor genuinely adds something.
+- Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name.
+- To keep the card readable, only write flavor text when the rules text is short and the flavor genuinely adds something.
 - The majority of the time, a card will be a simple, single-faced card.
 
 ## artDirective (required per face)
-- "generate" — generate new art from scratch. Default for new cards.
-- "keep_self" — use this face's existing art unchanged. Edit-mode only.
-- "keep_other" — use the OTHER face's existing art unchanged (art-swap case). Edit-mode only.
-- "edit_self" — Flux Kontext tweak of this face's existing art. Put ONLY the delta in artDescription ("turn the sword into a spear").
-- "edit_other" — Flux Kontext tweak of the other face's art. In create mode, face 2 can derive from face 1's newly generated art this way. Delta only in artDescription.
+- "generate" — generate new art from scratch
+- "keep_self" — use this face's existing art unchanged
+- "keep_other" — use the OTHER face's existing art unchanged (art-swap case)
+- "edit_self" — Edit this face's existing art. Put ONLY the delta in artDescription ("turn the sword into a spear").
+- "edit_other" — Edit the other face's art. In create mode, face 2 can derive from face 1's newly generated art this way. Delta only in artDescription.
 
 When editing an existing card and the user didn't ask to change art, use "keep_self" on both faces.
 
@@ -187,7 +181,7 @@ Make sure card effects fit within the color pie. Defer to the user though if the
 Make sure the power of the effect is appropriate for the card's rarity and cost.
 
 ## Technical
-- Use standard MTG symbols where appropriate: e.g. mana symbols {W}{U}{B}{R}{G}, {C}, {S}, {1}, {2}, {X}, {W/U}, {G/P}, {2/W}, {C/W}. And other symbols like {T}, {E}, etc.
+- Use standard MTG symbols e.g. {W}{U}{B}{R}{G}, {C}, {S}, {1}, {2}, {X}, {T}, {E}, etc.
 - typeLine is the FULL line: "Legendary Creature — Human Wizard".
 - abilities: one per line. Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II,IV — text".
 - In abilities, refer to the card by its full name OR \`~\`
