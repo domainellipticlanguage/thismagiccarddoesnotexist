@@ -180,7 +180,7 @@ function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
 export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Output a JSON object with a \`cards\` array.
 
 ## Shape
-- \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse, battle, etc.).
+- \`cards\` has 1 item for single-faced cards, 2 items for multi-face (transform, adventure, split, modal DFC, aftermath, flip, fuse, battle, room, omen, prepare, etc.).
 - Every field on every card must be present. For fields that don't apply, use "" (empty string):
 - Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name.
 - To keep the card readable, only write flavor text when the rules text is short and the flavor genuinely adds something.
@@ -222,6 +222,13 @@ Prepared is NOT a keyword or subtype. Don't write "prepared" as a flavor word fo
 Omen is a 2-card mechanic. Similar to Adventure, a permanent can have an instant or sorcery as a secondary card. (So far, Omen has only ever appeared when the permanent card is a dragon creature). Omen is a subtype of Instant or Sorcery. The Omen spell causes the whole card to get shuffled into the library.
 Include the reminder text inline, parenthesized, on the same line as the Omen spell ability. Example: 
 \`Gain 3 life. (Then shuffle this card into its owner's library.)\`
+
+## New mechanic: Room
+Room  is a 2-card mechanic, where each side gets its own name (suggesting some relationship) and its own mana cost. Example: "Bottomless Pool {U} // Locker Room {4}{U}"
+Room is a subtype of Enchantment. How it works is: 
+You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.
+They usually have regular static abilities like normal enchantments, which are only active when the room is unlocked.
+Additionally, they sometimes have triggered abilities like \`When you unlock this door, ...\`.
 `;
 
 // ---------------------------------------------------------------------------

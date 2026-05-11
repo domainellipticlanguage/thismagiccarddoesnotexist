@@ -32,12 +32,13 @@ const SUPERTYPES = SUPERTYPES_LIST;
 // Layout + Face Template types (form-only, mapped to/from CardData on save/load)
 // ---------------------------------------------------------------------------
 
-type Layout = "single" | "transform" | "mdfc" | "adventure" | "split" | "fuse" | "aftermath" | "flip" | "prepare" | "room";
+type Layout = "" | "single" | "transform" | "mdfc" | "adventure" | "split" | "fuse" | "aftermath" | "flip" | "prepare" | "room";
 
 type FaceTemplate = "" | "standard" | "planeswalker" | "saga" | "class"
   | "leveler" | "prototype" | "mutate" | "battle";
 
 const LAYOUT_OPTIONS: { label: string; value: Layout }[] = [
+  { label: "Auto-detect", value: "" },
   { label: "Single Face", value: "single" },
   { label: "Transform (DFC)", value: "transform" },
   { label: "Modal DFC", value: "mdfc" },
@@ -51,7 +52,7 @@ const LAYOUT_OPTIONS: { label: string; value: Layout }[] = [
 ];
 
 const LAYOUT_TO_LINK_TYPE: Record<Layout, LinkType | undefined> = {
-  single: undefined, transform: "transform", mdfc: "modal_dfc",
+  "": undefined, single: undefined, transform: "transform", mdfc: "modal_dfc",
   adventure: "adventure", split: "split", fuse: "fuse",
   aftermath: "aftermath", flip: "flip", prepare: "prepare",
   // Rooms are split-linked enchantments; both faces also need cardTemplate: "room".
@@ -670,7 +671,10 @@ function buildCardData(form: FormState, linkedForm?: LinkedFormState, abilities?
   const isPw = form.types.includes("planeswalker");
   const isBattle = form.types.includes("battle");
   const linkType = LAYOUT_TO_LINK_TYPE[form.layout];
-  const hasLinked = !!linkType;
+  // For known multi-face layouts always emit the linked face. For Auto-detect,
+  // only emit when the user actually filled in a linked face — otherwise crucible
+  // would think it's a malformed multi-face card.
+  const hasLinked = !!linkType || (form.layout === "" && !!linkedForm?.name.trim());
 
   const cd: CardData = {
     name: form.name || undefined,
@@ -1040,7 +1044,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
       {hasLinkedCard && (
         <details className="border border-neutral-800 rounded-lg" open>
           <summary className="px-4 py-2 cursor-pointer text-sm font-medium text-neutral-400 hover:text-neutral-300 transition-colors select-none">
-            {form.layout === "adventure" ? "Adventure Spell" : form.layout === "prepare" ? "Prepare Spell" : form.layout === "room" ? "Door 2" : "Back Face"} ({form.layout})
+            {form.layout === "adventure" ? "Adventure Spell" : form.layout === "prepare" ? "Prepare Spell" : form.layout === "room" ? "Door 2" : "Back Face"} ({form.layout || "auto"})
           </summary>
           <div className="px-4 pb-4 pt-2 space-y-3">
             <LinkedCardEditor form={linkedForm} onChange={setLinkedForm} loading={loading} />
