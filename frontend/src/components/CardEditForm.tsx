@@ -71,12 +71,14 @@ const FACE_TEMPLATES: { label: string; value: FaceTemplate }[] = [
   { label: "Battle", value: "battle" },
 ];
 
-/** Reverse-map CardData to Layout for form initialization. */
+/** Reverse-map CardData to Layout for form initialization.
+ *  linkType is the source of truth — `cardTemplate: "room"` only upgrades a
+ *  Split to a Room. An MDFC where both faces happen to use the room template
+ *  stays an MDFC. */
 function inferLayout(cd: CardData): Layout {
-  // A linkType=split card with cardTemplate=room (on either face) is a Room layout,
-  // not a generic Split.
-  if (cd.cardTemplate === "room" || cd.linkedCard?.cardTemplate === "room") return "room";
+  const hasRoomTemplate = cd.cardTemplate === "room" || cd.linkedCard?.cardTemplate === "room";
   if (cd.linkType) {
+    if (cd.linkType === "split" && hasRoomTemplate) return "room";
     const map: Partial<Record<LinkType, Layout>> = {
       transform: "transform", modal_dfc: "mdfc", adventure: "adventure",
       split: "split", fuse: "fuse", flip: "flip", aftermath: "aftermath",
@@ -84,6 +86,8 @@ function inferLayout(cd: CardData): Layout {
     };
     return map[cd.linkType] ?? "single";
   }
+  // No linkType — fall back to template inference.
+  if (hasRoomTemplate) return "room";
   const t = cd.cardTemplate;
   if (t) {
     const map: Partial<Record<TemplateName, Layout>> = {

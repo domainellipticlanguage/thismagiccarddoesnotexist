@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchCard, createCard, editCardFields } from "../api/client";
 import type { Card, CardData } from "../types/card";
 import { MtgCard } from "mtg-crucible/react";
@@ -10,13 +10,22 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mode = propMode || "edit";
   const [card, setCard] = useState<Card | null>(null);
   const [currentId, setCurrentId] = useState(id);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState<"ai" | "advanced">("ai");
+  const editMode: "ai" | "advanced" = searchParams.get("type") === "advanced" ? "advanced" : "ai";
+  const setEditMode = (next: "ai" | "advanced") => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === "ai") params.delete("type");
+      else params.set("type", next);
+      return params;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -36,7 +45,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       // Edit: stay on the edit page so the user can keep iterating.
       setCard(response.card);
       setCurrentId(response.card.id);
-      window.history.replaceState(null, "", `/card/${response.card.id}/edit`);
+      window.history.replaceState(null, "", `/card/${response.card.id}/edit${window.location.search}`);
     } catch (err: any) {
       setError(err.message);
       throw err; // Let CreateForm know not to clear the textarea.
@@ -52,7 +61,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       const data = await fetchCard(newId);
       setCard(data.card);
       setCurrentId(newId);
-      window.history.replaceState(null, "", `/card/${newId}/edit`);
+      window.history.replaceState(null, "", `/card/${newId}/edit${window.location.search}`);
     } catch (err: any) { setError(err.message); }
     finally { setSaving(false); }
   }
@@ -77,7 +86,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
         <LoadingSpinner fullScreen message="Creating remix..." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 lg:sticky lg:top-20 lg:self-start">
             {card.display && <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />}
           </div>
           <div className="lg:col-span-2">

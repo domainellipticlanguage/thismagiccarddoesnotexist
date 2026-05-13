@@ -23,6 +23,21 @@ function isRoomFace(face: CardData): boolean {
   return tl.subtypes?.some((s) => s.toLowerCase() === "room") ?? false;
 }
 
+/** Rooms render a single landscape across both door panels. Combine the per-face
+ *  artDescriptions into one composite prompt so the model produces a cohesive
+ *  scene; mutate the cardData so the composite is what we persist (and what
+ *  drives art generation). Idempotent: skips if the linked face's description
+ *  has already been cleared. */
+function combineRoomArtDescriptions(cardData: CardData): void {
+  if (!cardData.linkedCard) return;
+  if (!isRoomFace(cardData) || !isRoomFace(cardData.linkedCard)) return;
+  const first = cardData.artDescription?.trim();
+  const second = cardData.linkedCard.artDescription?.trim();
+  if (!first || !second) return; // already combined, or nothing to combine
+  cardData.artDescription = `A panoramic view of 2 scenes melded together. On the left side is ${first}. On the right side is ${second}.`;
+  cardData.linkedCard.artDescription = undefined;
+}
+
 /**
  * Resolve art for a single face. Returns:
  *   - `Buffer` for a freshly generated/edited image (needs to be uploaded later)
@@ -38,10 +53,7 @@ async function resolveFaceArt(
 ): Promise<string | Buffer | undefined> {
   if (!dims) return undefined; // single-art layout (e.g. Adventure); skip this face
   const { width, height } = dims;
-  const baseDesc = face.artDescription ?? "";
-  // Rooms render the art across both door panels — steer the model toward a wide
-  // single landscape rather than a portrait scene.
-  const desc = baseDesc && isRoomFace(face) ? `${baseDesc}, panoramic landscape` : baseDesc;
+  const desc = face.artDescription ?? "";
 
   switch (directive) {
     case "keep_self":
@@ -201,6 +213,10 @@ export async function generateRenderedCard(
     cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
   }
   console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
+
+  // Rooms: collapse the LLM's two per-door descriptions into one composite
+  // before art gen + persistence. Mutates cardData in place.
+  combineRoomArtDescriptions(cardData);
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 

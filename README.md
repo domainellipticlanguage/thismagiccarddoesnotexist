@@ -25,23 +25,19 @@ cp .env.example .env
 
 ## Running Locally
 
-Two terminals:
-
 ```bash
-# Terminal 1: API server
 npm run dev
-
-# Terminal 2: Frontend with hot reload
-cd frontend && npm run dev
 ```
 
-Open http://localhost:5173. The Vite dev server proxies `/api/*` to the Express server on port 3001.
+Starts both the API server (port 3001) and the Vite dev server (port 5173) in parallel — frees the ports first if anything's already on them. Open http://localhost:5173; Vite proxies `/api/*` to the API on 3001. Ctrl+C kills both.
 
-Or, build the frontend and serve everything from one server:
+Backend-only or frontend-only: `npm run dev:api` / `npm run dev:web`.
+
+Or, build the frontend and serve everything from one server (matches prod):
 
 ```bash
 npm run build
-npm run dev
+npm run dev:api
 # Open http://localhost:3001
 ```
 

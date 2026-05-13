@@ -35,10 +35,12 @@ frontend/
 ## Commands
 
 ```bash
-npm run dev              # Start Express server with hot reload (port 3001)
-cd frontend && npm run dev  # Start Vite dev server (port 5173, proxies /api to 3001)
+npm run dev              # Start API (3001) + Vite (5173) in parallel; frees those ports first
+npm run dev:api          # Backend only
+npm run dev:web          # Frontend only
 npm run build            # Build frontend into frontend/dist/
 npm run deploy           # Build + deploy to AWS Lambda
+npm run link             # Re-symlink node_modules/mtg-crucible → ~/Projects/mtg-crucible (rerun after `npm install`)
 ```
 
 ## Key Decisions

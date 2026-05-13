@@ -224,10 +224,11 @@ Include the reminder text inline, parenthesized, on the same line as the Omen sp
 \`Gain 3 life. (Then shuffle this card into its owner's library.)\`
 
 ## New mechanic: Room
-Room  is a 2-card mechanic, where each side gets its own name (suggesting some relationship) and its own mana cost. Example: "Bottomless Pool {U} // Locker Room {4}{U}"
-Room is a subtype of Enchantment. How it works is: 
+Room  is a 2-card mechanic, where each side gets its own name, mana cost, and abilities. Example: "Bottomless Pool {U} // Locker Room {4}{U}"
+Room is a subtype of Enchantment i.e. typeLine must be "Enchantment — Room". How it works is: 
 You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.
-They usually have regular static abilities like normal enchantments, which are only active when the room is unlocked.
+The unlocking mechanic is implicit, so abilities DO NOT say "While this door is unlocked, ..."
+They usually have regular static abilities like normal enchantments, which are only active when that half of the room is unlocked.
 Additionally, they sometimes have triggered abilities like \`When you unlock this door, ...\`.
 `;
 
