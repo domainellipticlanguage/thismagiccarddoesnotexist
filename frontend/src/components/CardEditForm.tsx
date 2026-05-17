@@ -9,12 +9,21 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function titleCaseWord(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function titleCaseTypeLine(s: string): string {
+  return s.split(/(\s+|—|-)/).map((tok) => /\w/.test(tok) ? titleCaseWord(tok) : tok).join("");
+}
+
 function resolveTypeLineString(tl: CardData["typeLine"]): string {
   if (!tl) return "";
-  if (typeof tl === "string") return tl;
-  const left = [...tl.supertypes, ...tl.types].join(" ");
-  if (!tl.subtypes.length) return left;
-  return `${left} — ${tl.subtypes.join(" ")}`;
+  if (typeof tl === "string") return titleCaseTypeLine(tl);
+  const left = [...tl.supertypes, ...tl.types].map(titleCaseWord).join(" ");
+  const right = tl.subtypes.map(titleCaseWord).join(" ");
+  if (!right) return left;
+  return `${left} — ${right}`;
 }
 
 /** Render CardData.abilities (which may be string or structured) as plain text
@@ -292,7 +301,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="advanced-edit-form" onSubmit={handleSubmit} className="space-y-6">
       <FaceFields form={front} onChange={setFront} loading={loading} />
 
       <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -313,13 +322,13 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
         </fieldset>
       )}
 
-      <div className="flex gap-3">
-        <button type="submit" disabled={loading}
-          className="px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2">
-          {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
-          {loading ? "Saving..." : "Save & Re-render"}
-        </button>
-      </div>
+      {/* Bottom-of-form submit — only on narrow screens where the sticky
+          card+button above scrolls away. Desktop relies on the sticky one. */}
+      <button type="submit" disabled={loading}
+        className="lg:hidden w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
+        {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
+        {loading ? "Saving..." : "Save & Re-render"}
+      </button>
     </form>
   );
 }

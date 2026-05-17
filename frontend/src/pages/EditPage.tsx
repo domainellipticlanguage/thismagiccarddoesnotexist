@@ -89,11 +89,18 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
         <LoadingSpinner fullScreen message="Creating remix..." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
+          <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start space-y-3">
             {card.display && (
               <div key={flashCount} className={flashCount > 0 ? "card-flash" : undefined}>
                 <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />
               </div>
+            )}
+            {mode === "edit" && editMode === "advanced" && (
+              <button type="submit" form="advanced-edit-form" disabled={saving}
+                className="w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
+                {saving && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
+                {saving ? "Saving..." : "Save & Re-render"}
+              </button>
             )}
           </div>
           <div className="lg:col-span-3">

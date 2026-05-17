@@ -66,7 +66,7 @@ const CARD_SCHEMA: OpenAI.FunctionParameters = {
     typeLine: { type: "string" },
     abilities: { type: "string" },
     flavorText: { type: "string" },
-    artDescription: { type: "string" },
+    artDescription: { type: "string", minLength: 1 },
     artDirective: { type: "string", enum: ART_DIRECTIVE_ENUM as unknown as string[] },
     rarity: { type: "string", enum: ["common", "uncommon", "rare", "mythic"] },
     colorIndicator: { type: "string" },
