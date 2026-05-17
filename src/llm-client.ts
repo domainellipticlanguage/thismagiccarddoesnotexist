@@ -230,6 +230,11 @@ You may cast either half. That door unlocks on the battlefield. As a sorcery, yo
 The unlocking mechanic is implicit, so abilities DO NOT say "While this door is unlocked, ..."
 They usually have regular static abilities like normal enchantments, which are only active when that half of the room is unlocked.
 Additionally, they sometimes have triggered abilities like \`When you unlock this door, ...\`.
+
+## Kamigawa Flip
+Kamigawa Flip is a 2-card mechanic, it's essentially exactly the same as transform. If a user asks for a "flip card" or "kamigawa flip card",
+be sure that the first card has an activated or triggered ability like "[some trigger] flip ~"
+
 `;
 
 // ---------------------------------------------------------------------------

@@ -72,7 +72,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const title = mode === "copy" ? `Remix: ${card.cardData?.name || "Card"}` : `Edit: ${card.cardData?.name || "Card"}`;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-display text-2xl text-gold-400">{title}</h1>
         {mode === "edit" && (
@@ -85,11 +85,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       {saving && mode === "copy" ? (
         <LoadingSpinner fullScreen message="Creating remix..." />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 lg:sticky lg:top-20 lg:self-start">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
             {card.display && <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />}
           </div>
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
             {mode === "copy" || editMode === "ai" ? (
               <div>
