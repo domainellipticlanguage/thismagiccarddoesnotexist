@@ -66,7 +66,7 @@ const CARD_SCHEMA: OpenAI.FunctionParameters = {
     typeLine: { type: "string" },
     abilities: { type: "string" },
     flavorText: { type: "string" },
-    artDescription: { type: "string", minLength: 1 },
+    artDescription: { type: "string" },
     artDirective: { type: "string", enum: ART_DIRECTIVE_ENUM as unknown as string[] },
     rarity: { type: "string", enum: ["common", "uncommon", "rare", "mythic"] },
     colorIndicator: { type: "string" },
@@ -91,8 +91,15 @@ const CARDS_SCHEMA: OpenAI.FunctionParameters = {
   },
 };
 
-// Groq path: response_format with strict json_schema. Constrained decoding on
-// gpt-oss-120b guarantees schema adherence — no malformed tool calls to patch.
+// Groq path: response_format with strict json_schema. Strict mode uses
+// constrained decoding for STRUCTURAL constraints (type, required,
+// additionalProperties, enum, anyOf) — those are guaranteed. But value-shape
+// constraints (minLength, maxLength, pattern, minimum, maximum, format,
+// minItems, maxItems) are validated POST-HOC and return a 400 on mismatch —
+// the model can freely violate them. Stick to structural constraints; enforce
+// value shapes in our parser instead. Also: gpt-oss-120b has a known bug
+// where constrained decoding occasionally fails entirely (community-reported
+// ~1-10%), so always be prepared to retry.
 // (Groq docs: tool use does NOT support structured outputs, only response_format.
 //  https://console.groq.com/docs/structured-outputs)
 const DESIGN_CARD_RESPONSE_FORMAT = {
@@ -155,7 +162,22 @@ const expandTilde = (s: string | undefined, name: string): string | undefined =>
 const unescapeNewlines = (s: string | undefined): string | undefined =>
   s ? s.replace(/\\n/g, "\n") : s;
 
-function llmCardToCardData(card: LLMCard, linkedCard?: LLMCard): CardData {
+// Models sometimes emit U+2011 (NON-BREAKING HYPHEN) in names like
+// "Flame‑Fused Forge". Visually identical to "-" but crucible's parser
+// chokes on it. Replace with the ASCII hyphen-minus on every string field
+// at the LLM boundary.
+function normalizeLLMCard(c: LLMCard): LLMCard {
+  const out = { ...c };
+  for (const k of Object.keys(out) as (keyof LLMCard)[]) {
+    const v = out[k];
+    if (typeof v === "string") (out as Record<string, unknown>)[k] = v.replace(/‑/g, "-");
+  }
+  return out;
+}
+
+function llmCardToCardData(raw: LLMCard, linkedRaw?: LLMCard): CardData {
+  const card = normalizeLLMCard(raw);
+  const linkedCard = linkedRaw ? normalizeLLMCard(linkedRaw) : undefined;
   return {
     name: card.name,
     manaCost: blank(card.manaCost),
