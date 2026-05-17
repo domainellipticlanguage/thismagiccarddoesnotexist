@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { fetchCard, createCard, editCardFields } from "../api/client";
-import type { Card, CardData } from "../types/card";
+import type { Card, CardData, CardResponse } from "../types/card";
 import { MtgCard } from "mtg-crucible/react";
 import { CardEditForm } from "../components/CardEditForm";
 import { CreateForm } from "../components/CreateForm";
@@ -10,11 +10,16 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const mode = propMode || "edit";
-  const [card, setCard] = useState<Card | null>(null);
+  // After create/remix we land here with the full CardResponse in router
+  // state — use it directly so we don't race a DDB read against the write
+  // that just happened.
+  const initial = (location.state as CardResponse | null) ?? null;
+  const [card, setCard] = useState<Card | null>(initial?.card ?? null);
   const [currentId, setCurrentId] = useState(id);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flashCount, setFlashCount] = useState(0);
@@ -29,9 +34,9 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || initial) return;
     fetchCard(id).then((data) => setCard(data.card)).catch((err) => setError(err.message)).finally(() => setLoading(false));
-  }, [id]);
+  }, [id, initial]);
 
   async function handleAIEdit(description: string) {
     if (!currentId) return;
@@ -39,8 +44,9 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     try {
       const response = await createCard(description, currentId, mode);
       if (mode === "copy") {
-        // Copy creates a separate card; viewing it on its own page makes sense.
-        navigate(`/card/${response.card.id}`, { state: response });
+        // Copy creates a separate card; land on its edit page so the user
+        // can keep iterating on the remix.
+        navigate(`/card/${response.card.id}/edit`, { state: response });
         return;
       }
       // Edit: stay on the edit page so the user can keep iterating.
@@ -72,7 +78,10 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   if (loading) return <LoadingSpinner fullScreen />;
   if (!card) return <div className="text-center text-red-400 py-16"><p>{error || "Card not found"}</p></div>;
 
-  const title = mode === "copy" ? `Remix: ${card.cardData?.name || "Card"}` : `Edit: ${card.cardData?.name || "Card"}`;
+  const frontName = card.cardData?.name;
+  const backName = card.cardData?.linkedCard?.name;
+  const fullName = frontName && backName ? `${frontName} // ${backName}` : (frontName || "Card");
+  const title = mode === "copy" ? `Remix: ${fullName}` : `Edit: ${fullName}`;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -108,7 +117,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
             {mode === "copy" || editMode === "ai" ? (
               <div>
                 <p className="text-sm text-neutral-400 mb-4">{mode === "copy" ? "Describe how you want to remix this card." : "Describe the changes you want to make."}</p>
-                <CreateForm onSubmit={handleAIEdit} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Submit Edits"} />
+                <CreateForm onSubmit={handleAIEdit} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Submit Edits"} showSuggest={mode === "copy"} />
               </div>
             ) : (
               <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} />
