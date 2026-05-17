@@ -69,4 +69,5 @@ Add fine grained edit screen
 Allow uploading an image as a prompt for card generation
 Investigate `prunaai/p-image-edit` vs FLUX Kontext for art editing
 Add art description to the text mode
+Meld art for flip cards (like rooms)
 

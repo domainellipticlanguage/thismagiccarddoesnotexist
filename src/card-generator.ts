@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import type { CardDocument, CardRecord, ArtDirective } from "./types.js";
 import type { CardData, RenderedCard } from "mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
-import { generateArt, editArt } from "./art-generator.js";
+import { generateArt, editArt, combineArt, rotate180 } from "./art-generator.js";
 import {
   getArtDimensions,
   normalizeCard,
@@ -15,27 +15,74 @@ import {
 } from "./card-table.js";
 import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
-/** True if this face has the "Room" subtype — they get a single panoramic landscape. */
-function isRoomFace(face: CardData): boolean {
-  const tl = face.typeLine;
-  if (!tl) return false;
-  if (typeof tl === "string") return /\bRoom\b/i.test(tl);
-  return tl.subtypes?.some((s) => s.toLowerCase() === "room") ?? false;
-}
+/** Layouts that render a single piece of art shared across both faces of a
+ *  2-card link, where merging the LLM's per-face descriptions into one prompt
+ *  is enough to get a cohesive scene. Mutates the primary's artDescription in
+ *  place and clears the secondary's so no extra art is generated. Idempotent.
+ *
+ *  Flip is handled separately (see generateFlipArt): prompt-merging didn't
+ *  produce good results, so flip uses a 2-step gen-then-combine pipeline. */
+const COMPOSITE_ART_BUILDERS: Partial<Record<NonNullable<CardData["linkType"]>, (a: string, b: string) => string>> = {
+  room: (a, b) =>
+    `A panoramic view of 2 scenes melded together. On the left side is ${a}. On the right side is ${b}.`,
+};
 
-/** Rooms render a single landscape across both door panels. Combine the per-face
- *  artDescriptions into one composite prompt so the model produces a cohesive
- *  scene; mutate the cardData so the composite is what we persist (and what
- *  drives art generation). Idempotent: skips if the linked face's description
- *  has already been cleared. */
-function combineRoomArtDescriptions(cardData: CardData): void {
+function combineSharedArtDescriptions(cardData: CardData): void {
   if (!cardData.linkedCard) return;
-  if (!isRoomFace(cardData) || !isRoomFace(cardData.linkedCard)) return;
+  const linkType = normalizeCard(cardData).linkType;
+  if (!linkType) return;
+  const builder = COMPOSITE_ART_BUILDERS[linkType];
+  if (!builder) return;
   const first = cardData.artDescription?.trim();
   const second = cardData.linkedCard.artDescription?.trim();
-  if (!first || !second) return; // already combined, or nothing to combine
-  cardData.artDescription = `A panoramic view of 2 scenes melded together. On the left side is ${first}. On the right side is ${second}.`;
+  if (!first || !second) return;
+  cardData.artDescription = builder(first, second);
   cardData.linkedCard.artDescription = undefined;
+}
+
+/** Flip cards have one art region but represent two characters. Generate each
+ *  half-width separately, rotate the second image 180° (so the flipped form
+ *  arrives at the editor model in the same orientation it will read on the
+ *  physical card), then combine into the full landscape art via the multi-image
+ *  edit model. The "image 1"/"image 2" tokens in the prompt reference the
+ *  corresponding entries in `image_input`. */
+const FLIP_COMBINE_PROMPT =
+  "Combine these into one cohesive topsy turvy scene. the figure from image 1 on the left, the figure from image 2 on the right";
+
+async function generateFlipArt(
+  cardData: CardData,
+  directives: ArtDirective[],
+  fullDims: { width: number; height: number },
+  originalCard: CardDocument | undefined,
+): Promise<void> {
+  if (!cardData.linkedCard) return;
+
+  // Edit path: if the user wants to keep the existing combined art, reuse it.
+  const origUrl = typeof originalCard?.cardData.artUrl === "string" ? originalCard.cardData.artUrl : undefined;
+  if (directives[0] === "keep_self" && origUrl) {
+    cardData.artUrl = origUrl;
+    return;
+  }
+
+  const halfWidth = Math.round(fullDims.width / 2);
+  // Kick both gens off in parallel; chain rotate onto the right gen so it
+  // overlaps with whatever's left of the slower side.
+  const [leftBuf, rightRotated] = await Promise.all([
+    generateArt(cardData.artDescription ?? "", halfWidth, fullDims.height),
+    generateArt(cardData.linkedCard.artDescription ?? "", halfWidth, fullDims.height).then(rotate180),
+  ]);
+
+  // TEMP DEBUG: dump the two half-width images that feed into combineArt so we
+  // can eyeball them. Remove once the flip pipeline is dialed in.
+  const ts = Date.now();
+  const { writeFile } = await import("fs/promises");
+  await Promise.all([
+    writeFile(`/tmp/flip-${ts}-1-left.png`, leftBuf),
+    writeFile(`/tmp/flip-${ts}-2-right-rotated.png`, rightRotated),
+  ]);
+  console.log(`[Art] flip debug → /tmp/flip-${ts}-{1-left,2-right-rotated}.png`);
+
+  cardData.artUrl = await combineArt(FLIP_COMBINE_PROMPT, [leftBuf, rightRotated], fullDims.width, fullDims.height);
 }
 
 /**
@@ -86,6 +133,13 @@ async function generateArtForAllFaces(
 ): Promise<void> {
   const normalized = normalizeCard(cardData);
   const dims = getArtDimensions(normalized);
+
+  // Flip cards have one shared art region — handle via the multi-image combine
+  // pipeline rather than the per-face directive flow.
+  if (normalized.linkType === "flip" && cardData.linkedCard && dims.primaryArtDimensions) {
+    await generateFlipArt(cardData, artDirectives, dims.primaryArtDimensions, originalCard);
+    return;
+  }
 
   const faces = [cardData, cardData.linkedCard].filter((f): f is CardData => !!f);
   const faceDims = [dims.primaryArtDimensions, dims.secondaryArtDimensions];
@@ -214,9 +268,10 @@ export async function generateRenderedCard(
   }
   console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
 
-  // Rooms: collapse the LLM's two per-door descriptions into one composite
-  // before art gen + persistence. Mutates cardData in place.
-  combineRoomArtDescriptions(cardData);
+  // Layouts that share one art across two faces (rooms, flip): collapse the
+  // LLM's two per-face descriptions into one composite before art gen +
+  // persistence. Mutates cardData in place.
+  combineSharedArtDescriptions(cardData);
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
