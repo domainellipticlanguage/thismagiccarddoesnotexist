@@ -35,8 +35,8 @@ export async function generateArt(
 }
 
 /**
- * Edit existing art via Flux Kontext. `inputArt` may be an existing URL
- * (e.g. an S3 URL from a stored card) or a Buffer (e.g. the just-generated
+ * Edit existing art via Pruna's p-image-edit. `inputArt` may be an existing
+ * URL (e.g. an S3 URL from a stored card) or a Buffer (e.g. the just-generated
  * art for the other face); the Replicate SDK accepts both for file inputs.
  * Returns the edited image as a Buffer.
  */
@@ -48,18 +48,18 @@ export async function editArt(
 ): Promise<Buffer> {
   const aspectRatio = (targetWidth && targetHeight)
     ? closestKontextRatio(targetWidth, targetHeight)
-    : "match_input_image";
+    : "1:1";
 
   console.log(`[Art] Editing (aspect ${aspectRatio}): ${artDescription.slice(0, 80)}...`);
   const start = Date.now();
 
   const input = {
     prompt: artDescription,
-    input_image: inputArt,
+    images: [inputArt],
     aspect_ratio: aspectRatio,
   };
-  logReplicateRequest("black-forest-labs/flux-kontext-pro", input);
-  const output = await replicate.run("black-forest-labs/flux-kontext-pro", { input });
+  logReplicateRequest("prunaai/p-image-edit", input);
+  const output = await replicate.run("prunaai/p-image-edit", { input });
 
   const url = toOutputUrl(output);
   console.log(`[Art] Edited in ${((Date.now() - start) / 1000).toFixed(2)}s → ${url}`);
