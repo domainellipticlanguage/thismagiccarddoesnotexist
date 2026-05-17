@@ -3,9 +3,16 @@ import { MtgCard } from "mtg-crucible/react";
 import type { Card } from "../types/card";
 import { deleteCard } from "../api/client";
 
+function fullName(card: Card): string {
+  const a = card.cardData?.name;
+  const b = card.cardData?.linkedCard?.name;
+  if (a && b) return `${a} // ${b}`;
+  return a || "Untitled";
+}
+
 export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: boolean; canDelete: boolean }) {
   const navigate = useNavigate();
-  const name = card.cardData?.name || "Untitled";
+  const name = fullName(card);
 
   async function handleDelete() {
     if (!confirm(`Delete "${name}"?`)) return;

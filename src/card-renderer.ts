@@ -31,7 +31,7 @@ export function getArtDimensionsFromText(crucibleText: string): {
 export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> {
   console.log(`[Render] Rendering: ${cardData.name || "Untitled"}`);
   const start = Date.now();
-  const rendered = await renderCard(cardData, { quality: "medium", format: "jpeg" });
+  const rendered = await renderCard(cardData, { quality: "medium", format: "webp" });
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
   return rendered;
 }
@@ -39,10 +39,10 @@ export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> 
 /** Upload front (and back, if present) face buffers to S3 in parallel. */
 export async function uploadFaces(rendered: RenderedCard): Promise<string[]> {
   const uploads: Promise<string>[] = [
-    uploadBuffer(rendered.frontFace, `rendered/${uuid()}.jpg`, "image/jpeg"),
+    uploadBuffer(rendered.frontFace, `rendered/${uuid()}.webp`, "image/webp"),
   ];
   if (rendered.backFace) {
-    uploads.push(uploadBuffer(rendered.backFace, `rendered/${uuid()}-back.jpg`, "image/jpeg"));
+    uploads.push(uploadBuffer(rendered.backFace, `rendered/${uuid()}-back.webp`, "image/webp"));
   }
   return Promise.all(uploads);
 }

@@ -151,10 +151,10 @@ app.post("/api/cards", async (c) => {
       // Build the response card with data URLs so the client can render
       // the image immediately, before S3 has the persisted copy.
       const dataUrls = [
-        `data:image/jpeg;base64,${generated.rendered.frontFace.toString("base64")}`,
+        `data:image/webp;base64,${generated.rendered.frontFace.toString("base64")}`,
       ];
       if (generated.rendered.backFace) {
-        dataUrls.push(`data:image/jpeg;base64,${generated.rendered.backFace.toString("base64")}`);
+        dataUrls.push(`data:image/webp;base64,${generated.rendered.backFace.toString("base64")}`);
       }
       const responseCard = buildCardRecord(generated, dataUrls);
       const responsePayload: CardResponse = {
