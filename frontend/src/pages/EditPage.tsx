@@ -17,6 +17,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flashCount, setFlashCount] = useState(0);
   const editMode: "ai" | "advanced" = searchParams.get("type") === "advanced" ? "advanced" : "ai";
   const setEditMode = (next: "ai" | "advanced") => {
     setSearchParams((prev) => {
@@ -45,6 +46,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       // Edit: stay on the edit page so the user can keep iterating.
       setCard(response.card);
       setCurrentId(response.card.id);
+      setFlashCount((c) => c + 1);
       window.history.replaceState(null, "", `/card/${response.card.id}/edit${window.location.search}`);
     } catch (err: any) {
       setError(err.message);
@@ -61,6 +63,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       const data = await fetchCard(newId);
       setCard(data.card);
       setCurrentId(newId);
+      setFlashCount((c) => c + 1);
       window.history.replaceState(null, "", `/card/${newId}/edit${window.location.search}`);
     } catch (err: any) { setError(err.message); }
     finally { setSaving(false); }
@@ -87,7 +90,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
-            {card.display && <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />}
+            {card.display && (
+              <div key={flashCount} className={flashCount > 0 ? "card-flash" : undefined}>
+                <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />
+              </div>
+            )}
           </div>
           <div className="lg:col-span-3">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
