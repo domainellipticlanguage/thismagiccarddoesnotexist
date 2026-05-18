@@ -38,25 +38,22 @@ export async function generateArt(
  * Edit existing art via Pruna's p-image-edit. `inputArt` may be an existing
  * URL (e.g. an S3 URL from a stored card) or a Buffer (e.g. the just-generated
  * art for the other face); the Replicate SDK accepts both for file inputs.
- * Returns the edited image as a Buffer.
+ * Returns the edited image as a Buffer. Always preserves the source image's
+ * aspect — p-image-edit is for fine-grained edits, not reframing, and the
+ * model's accepted ratio set is narrower than the card-frame aspects we'd
+ * want to target anyway.
  */
 export async function editArt(
   artDescription: string,
   inputArt: string | Buffer,
-  targetWidth?: number,
-  targetHeight?: number,
 ): Promise<Buffer> {
-  const aspectRatio = (targetWidth && targetHeight)
-    ? closestKontextRatio(targetWidth, targetHeight)
-    : "1:1";
-
-  console.log(`[Art] Editing (aspect ${aspectRatio}): ${artDescription.slice(0, 80)}...`);
+  console.log(`[Art] Editing: ${artDescription.slice(0, 80)}...`);
   const start = Date.now();
 
   const input = {
     prompt: artDescription,
     images: [inputArt],
-    aspect_ratio: aspectRatio,
+    aspect_ratio: "match_input_image",
   };
   logReplicateRequest("prunaai/p-image-edit", input);
   const output = await replicate.run("prunaai/p-image-edit", { input });
@@ -96,36 +93,6 @@ async function fetchToBuffer(url: string): Promise<Buffer> {
   const buffer = Buffer.from(await response.arrayBuffer());
   console.log(`[Art] Fetched ${(buffer.length / 1024).toFixed(0)}kb in ${((Date.now() - start) / 1000).toFixed(2)}s`);
   return buffer;
-}
-
-const KONTEXT_RATIOS = [
-  { label: "1:1",   ratio: 1 },
-  { label: "16:9",  ratio: 16/9 },
-  { label: "9:16",  ratio: 9/16 },
-  { label: "4:3",   ratio: 4/3 },
-  { label: "3:4",   ratio: 3/4 },
-  { label: "3:2",   ratio: 3/2 },
-  { label: "2:3",   ratio: 2/3 },
-  { label: "4:5",   ratio: 4/5 },
-  { label: "5:4",   ratio: 5/4 },
-  { label: "21:9",  ratio: 21/9 },
-  { label: "9:21",  ratio: 9/21 },
-  { label: "2:1",   ratio: 2 },
-  { label: "1:2",   ratio: 0.5 },
-];
-
-function closestKontextRatio(width: number, height: number): string {
-  const target = width / height;
-  let best = KONTEXT_RATIOS[0];
-  let bestDiff = Math.abs(Math.log(target / best.ratio));
-  for (const entry of KONTEXT_RATIOS) {
-    const diff = Math.abs(Math.log(target / entry.ratio));
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = entry;
-    }
-  }
-  return best.label;
 }
 
 /** Scale dimensions to fit within [min, max] while preserving aspect ratio. */
