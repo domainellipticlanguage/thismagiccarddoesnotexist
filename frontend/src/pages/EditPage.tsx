@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
 import { fetchCard, createCard, editCardFields } from "../api/client";
 import type { Card, CardData, CardResponse } from "../types/card";
 import { MtgCard } from "mtg-crucible/react";
@@ -85,14 +85,21 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-4">
         <h1 className="font-display text-2xl text-gold-400">{title}</h1>
-        {mode === "edit" && (
-          <div className="flex bg-neutral-900 rounded-lg p-0.5">
-            <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>AI Edit</button>
-            <button onClick={() => setEditMode("advanced")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "advanced" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>Advanced</button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {mode === "edit" && (
+            <div className="flex bg-neutral-900 rounded-lg p-0.5">
+              <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>AI Edit</button>
+              <button onClick={() => setEditMode("advanced")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "advanced" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>Advanced</button>
+            </div>
+          )}
+          {currentId && (
+            <Link to={`/card/${currentId}`} className="text-sm text-neutral-400 hover:text-gold-400 transition-colors">
+              View card →
+            </Link>
+          )}
+        </div>
       </div>
       {saving && mode === "copy" ? (
         <LoadingSpinner fullScreen message="Creating remix..." />
