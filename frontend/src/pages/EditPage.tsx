@@ -15,7 +15,8 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const mode = propMode || "edit";
   // After create/remix we land here with the full CardResponse in router
   // state — use it directly so we don't race a DDB read against the write
-  // that just happened.
+  // that just happened. Safe to do this in useState init because EditPage
+  // is keyed by :id in App.tsx, so id changes always remount us fresh.
   const initial = (location.state as CardResponse | null) ?? null;
   const [card, setCard] = useState<Card | null>(initial?.card ?? null);
   const [currentId, setCurrentId] = useState(id);
