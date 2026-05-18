@@ -207,6 +207,7 @@ export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Outp
 - Each face has its OWN name. Do NOT put "Wine // Dine" in a single card's name.
 - To keep the card readable, only write flavor text when the rules text is short and the flavor genuinely adds something.
 - The majority of the time, a card will be a simple, single-faced card.
+- Pretty much the only use case for color indicator is the back of a transform card (which doesn't have a mana cost of its own)
 
 ## artDirective (required per face)
 - "generate" — generate new art from scratch
