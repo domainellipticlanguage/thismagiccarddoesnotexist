@@ -210,12 +210,16 @@ export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Outp
 
 ## artDirective (required per face)
 - "generate" — generate new art from scratch
-- "keep_self" — use this face's existing art unchanged
-- "keep_other" — use the OTHER face's existing art unchanged (art-swap case)
-- "edit_self" — Edit this face's existing art. Put ONLY the delta in artDescription ("turn the sword into a spear").
-- "edit_other" — Edit the other face's art. In create mode, face 2 can derive from face 1's newly generated art this way. Delta only in artDescription.
+- "keep_self" — use this face's existing art unchanged (artDescription will be ignored). Use this when the user didn't ask to change art.
+- "edit_self" — Edit this face's existing art.
+- "keep_other" - Take the other face's art, then use it for this face, as-is.
+- "edit_other" — Take the other face's art, edit it, then use it for this face.
 
-When editing an existing card and the user didn't ask to change art, use "keep_self" on both faces.
+For "edit_self"/"edit_other" put ONLY the delta in artDescription (e.g., "turn the sword into a spear").
+
+When a card is being created for the first time, "artDescription" should be non-empty for every face, 
+and artDirective should be "generate" for at least one face. The other face can be "edit_other" 
+(to have the two faces have correlated art) or "generate" (to have no correlation between the art).
 
 ## Color pie
 Make sure card effects fit within the color pie. Defer to the user though if they explicitly want a color pie break, even if the user might not realize it's a color pie break.

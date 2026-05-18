@@ -69,16 +69,21 @@ async function resolveFaceArt(
       if (selfOriginalUrl) return selfOriginalUrl;
       return desc ? generateArt(desc, width, height) : undefined;
     case "keep_other":
+      // Prefer the other face's existing original (art-swap case on an edit);
+      // fall back to whatever the other face just generated this round (first-
+      // round create where the sibling has directive=generate); last resort,
+      // generate locally from this face's own description.
       if (otherOriginalUrl) return otherOriginalUrl;
+      if (otherNew) return otherNew;
       return desc ? generateArt(desc, width, height) : undefined;
     case "edit_self":
       return selfOriginalUrl && desc
-        ? editArt(desc, selfOriginalUrl, width, height)
+        ? editArt(desc, selfOriginalUrl)
         : desc ? generateArt(desc, width, height) : undefined;
     case "edit_other": {
       const src = otherNew ?? otherOriginalUrl;
       return src && desc
-        ? editArt(desc, src, width, height)
+        ? editArt(desc, src)
         : desc ? generateArt(desc, width, height) : undefined;
     }
     case "generate":
@@ -103,12 +108,25 @@ async function generateArtForAllFaces(
   const origUrls = originalFaces.map((f) => (typeof f?.artUrl === "string" ? f.artUrl : undefined));
   const directives = faces.map((_, i) => artDirectives[i] ?? "generate");
 
+  // Provenance: when keep_self leaves artDescription empty, inherit the
+  // description that was active when this art was last generated. Otherwise
+  // future iterations would lose context about what's in the existing image.
+  for (let i = 0; i < faces.length; i++) {
+    if (directives[i] !== "keep_self") continue;
+    if (faces[i].artDescription?.trim()) continue;
+    const prev = originalFaces[i]?.artDescription;
+    if (prev) faces[i].artDescription = prev;
+  }
+
   const newArt: (string | Buffer | undefined)[] = new Array(faces.length).fill(undefined);
 
   // Pass 1: resolve faces that don't depend on the other face's new art.
+  // edit_other and keep_other are deferred — they may need to fall back to
+  // the sibling's freshly-generated art when no prior original exists.
+  const deferred = new Set<ArtDirective>(["edit_other", "keep_other"]);
   await Promise.all(
     faces.map(async (face, i) => {
-      if (directives[i] === "edit_other") return;
+      if (deferred.has(directives[i])) return;
       newArt[i] = await resolveFaceArt(
         face,
         directives[i],
@@ -120,9 +138,9 @@ async function generateArtForAllFaces(
     })
   );
 
-  // Pass 2: resolve edit_other faces (can now reference the other face's new art).
+  // Pass 2: resolve deferred faces (can now reference the other face's new art).
   for (let i = 0; i < faces.length; i++) {
-    if (directives[i] !== "edit_other") continue;
+    if (!deferred.has(directives[i])) continue;
     newArt[i] = await resolveFaceArt(
       faces[i],
       directives[i],
