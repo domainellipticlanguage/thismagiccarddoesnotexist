@@ -19,6 +19,10 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Dynamo"
     }
+    "Router": {
+      "type": "sst.aws.Router"
+      "url": string
+    }
   }
 }
 
