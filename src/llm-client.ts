@@ -210,7 +210,7 @@ export const SYSTEM_PROMPT = `You are a Magic: The Gathering card designer. Outp
 - Pretty much the only use case for color indicator is the back of a transform card (which doesn't have a mana cost of its own)
 
 ## artDirective (required per face)
-- "generate" — generate new art from scratch
+- "generate" — generate new art from scratch (either when generating for the first time, or to completely restart the art)
 - "keep_self" — use this face's existing art unchanged (artDescription will be ignored). Use this when the user didn't ask to change art.
 - "edit_self" — Edit this face's existing art.
 - "keep_other" - Take the other face's art, then use it for this face, as-is.
