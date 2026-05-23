@@ -11,19 +11,19 @@ export function AboutPage() {
         all in about 5 seconds.
       </p>
 
-      <a
-        href="https://www.npmjs.com/package/mtg-crucible"
-        target="_blank"
-        rel="noreferrer"
-        className="block bg-gradient-to-br from-neutral-900 to-neutral-950 border border-gold-400/30 rounded-lg p-6 hover:border-gold-400/60 transition-colors group"
-      >
+      <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 border border-gold-400/30 rounded-lg p-6">
         <div className="flex items-start gap-4">
           <img src={CRUCIBLE_LOGO} alt="mtg-crucible logo" className="h-24 w-auto shrink-0" />
           <div className="space-y-2">
             <div>
-              <h2 className="font-display text-2xl text-gold-400 group-hover:text-gold-300 transition-colors">
+              <a
+                href="https://www.npmjs.com/package/mtg-crucible"
+                target="_blank"
+                rel="noreferrer"
+                className="font-display text-2xl text-gold-400 hover:text-gold-300 transition-colors"
+              >
                 mtg-crucible
-              </h2>
+              </a>
               <p className="text-xs text-neutral-500">The rendering engine that powers this site</p>
             </div>
             <p className="text-sm text-neutral-300 leading-relaxed">
@@ -35,18 +35,30 @@ export function AboutPage() {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs pt-1">
               <span className="text-neutral-500">
                 GitHub:{" "}
-                <span className="text-gold-400 group-hover:text-gold-300">
+                <a
+                  href="https://github.com/domainellipticlanguage/mtg-crucible"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-gold-400 hover:text-gold-300 underline underline-offset-2"
+                >
                   domainellipticlanguage/mtg-crucible
-                </span>
+                </a>
               </span>
               <span className="text-neutral-500">
                 npm:{" "}
-                <span className="text-gold-400 group-hover:text-gold-300">mtg-crucible</span>
+                <a
+                  href="https://www.npmjs.com/package/mtg-crucible"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-gold-400 hover:text-gold-300 underline underline-offset-2"
+                >
+                  mtg-crucible
+                </a>
               </span>
             </div>
           </div>
         </div>
-      </a>
+      </div>
 
       <div className="space-y-3">
         <h2 className="font-display text-xl text-gold-400">Source</h2>
