@@ -58,17 +58,19 @@ export default $config({
       ],
     });
 
-    // CloudFront router fronts the Lambda URL with our custom domain. SST
-    // detects the Route 53 hosted zone for thismagiccarddoesnotexist.com,
-    // creates the ACM cert in us-east-1, and wires the A/AAAA records.
-    // www. → apex redirect not wired yet — Heroku's CloudFront still holds
-    // the www CNAME claim cross-account; restore `redirects: [...]` here
-    // once that's released.
+    // CloudFront router fronts the Lambda URL with our custom domain.
+    // DNS lives at Cloudflare (apex CNAME → this CloudFront, www proxied
+    // there for the www→apex redirect). SST doesn't manage DNS; we pass the
+    // existing ACM cert ARN explicitly.
     // NOTE: route pattern is `/` not `/*` — SST's router CloudFront Function
     // path matcher does a literal startsWith on `/*` which never matches a
     // real URI; `/` hits a special catch-all branch and works.
     const router = new sst.aws.Router("Router", {
-      domain: "thismagiccarddoesnotexist.com",
+      domain: {
+        name: "thismagiccarddoesnotexist.com",
+        dns: false,
+        cert: "arn:aws:acm:us-east-1:367546079126:certificate/9d38161c-88bd-4144-8734-a00fcbf1e0b6",
+      },
     });
     router.route("/", fn.url);
 
