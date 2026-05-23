@@ -89,18 +89,6 @@ export function AboutPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {[
-          { title: "Card Design", body: <>An LLM (Groq's openai/gpt-oss-120b by default) drafts the card using a structured-output schema, including multi-face layouts like transform, MDFC, split, saga, class, and battle.</> },
-          { title: "Art Generation", body: <>Replicate's prunaai/p-image generates each face's artwork from a prompt; p-image-edit handles fine-grained edits and art-swap between linked faces.</> },
-        ].map((item) => (
-          <div key={item.title} className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gold-400 mb-1">{item.title}</h3>
-            <p className="text-sm text-neutral-400">{item.body}</p>
-          </div>
-        ))}
-      </div>
-
       <div className="text-xs text-neutral-500 pt-6 border-t border-neutral-900">
         Magic: The Gathering is a trademark of Wizards of the Coast. This site is a fan project
         and is not affiliated with or endorsed by Wizards of the Coast. Generated cards are not
