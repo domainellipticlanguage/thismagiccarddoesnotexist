@@ -18,7 +18,7 @@ export function AboutPage() {
         className="block bg-gradient-to-br from-neutral-900 to-neutral-950 border border-gold-400/30 rounded-lg p-6 hover:border-gold-400/60 transition-colors group"
       >
         <div className="flex items-start gap-4">
-          <img src={CRUCIBLE_LOGO} alt="mtg-crucible logo" className="h-16 w-auto shrink-0" />
+          <img src={CRUCIBLE_LOGO} alt="mtg-crucible logo" className="h-24 w-auto shrink-0" />
           <div className="space-y-2">
             <div>
               <h2 className="font-display text-2xl text-gold-400 group-hover:text-gold-300 transition-colors">
