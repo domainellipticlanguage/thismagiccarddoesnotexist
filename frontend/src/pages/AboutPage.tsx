@@ -12,7 +12,7 @@ export function AboutPage() {
       </p>
 
       <a
-        href="https://github.com/domainellipticlanguage/mtg-crucible"
+        href="https://www.npmjs.com/package/mtg-crucible"
         target="_blank"
         rel="noreferrer"
         className="block bg-gradient-to-br from-neutral-900 to-neutral-950 border border-gold-400/30 rounded-lg p-6 hover:border-gold-400/60 transition-colors group"
