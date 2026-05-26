@@ -238,7 +238,7 @@ Make sure the power of the effect is appropriate for the card's rarity and cost.
 
 ## New mechanic: Prepared
 Prepared is a 2-card mechanic. Like Adventure, a permanent card has a paired instant or sorcery in \`cards[1]\`. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared.
-Canonically, the prepare spell is a previously printed instant or sorcery spell. So don't invent a new spell for the prepared spell unless the user requests it.
+Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the original mana cost. So don't invent a new spell for the prepared spell unless the user requests it.
 
 When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Example:
 \`Whenever you cast a creature spell, ~ becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
