@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import type { CardDocument, CardRecord, ArtDirective } from "./types.js";
 import type { CardData, RenderedCard } from "mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
-import { generateArt, editArt } from "./art-generator.js";
+import { generateArt, editArt, ART_MODEL } from "./art-generator.js";
 import {
   getArtDimensions,
   normalizeCard,
@@ -233,10 +233,10 @@ export async function generateRenderedCard(
   const llmResult = await llmCreateCard(description, originalCard?.cardData, mode);
 
   const cardData = llmResult.cardData;
-  cardData.artist = "prunaai/p-image";
+  cardData.artist = ART_MODEL;
   cardData.designer = "thismagiccarddoesnotexist.com";
   if (cardData.linkedCard) {
-    cardData.linkedCard.artist = "prunaai/p-image";
+    cardData.linkedCard.artist = ART_MODEL;
     cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
   }
   console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
