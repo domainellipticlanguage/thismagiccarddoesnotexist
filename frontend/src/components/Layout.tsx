@@ -18,7 +18,7 @@ export function Layout() {
           <img
             src="https://raw.githubusercontent.com/domainellipticlanguage/mtg-crucible/main/logo/logo-256.png"
             alt=""
-            className="h-4 w-auto"
+            className="h-[24px] w-auto"
           />
           <span className="font-medium">mtg-crucible</span>
         </Link>

@@ -1,9 +1,17 @@
 import { useMemo, useState } from "react";
 import {
   parseTypeLine,
+  LINK_TYPES,
   type CardData,
   type Color,
+  type LinkType,
 } from "mtg-crucible/parser";
+
+/** Human-friendly label for a link type (the dropdown options). */
+function linkTypeLabel(t: LinkType): string {
+  if (t === "modal_dfc") return "Modal DFC";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -275,15 +283,18 @@ interface CardEditFormProps {
 export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormProps) {
   const [front, setFront] = useState<FaceFormState>(() => initFaceForm(initialCardData));
   const [back, setBack] = useState<FaceFormState>(() => initFaceForm(initialCardData.linkedCard));
-  const [multiFace, setMultiFace] = useState<boolean>(!!initialCardData.linkedCard);
+  // "" = no secondary card (single-faced); otherwise the chosen LinkType.
+  const [linkType, setLinkType] = useState<LinkType | "">(
+    initialCardData.linkedCard ? initialCardData.linkType ?? "transform" : ""
+  );
 
   const cardData = useMemo((): CardData => {
     const base: CardData = {
       ...initialCardData,
       ...buildFaceFields(front),
     };
-    if (multiFace) {
-      base.linkType = initialCardData.linkType ?? "transform";
+    if (linkType) {
+      base.linkType = linkType;
       base.linkedCard = {
         ...(initialCardData.linkedCard ?? {}),
         ...buildFaceFields(back),
@@ -293,7 +304,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
       base.linkedCard = undefined;
     }
     return base;
-  }, [front, back, multiFace, initialCardData]);
+  }, [front, back, linkType, initialCardData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,18 +315,22 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
     <form id="advanced-edit-form" onSubmit={handleSubmit} className="space-y-6">
       <FaceFields form={front} onChange={setFront} loading={loading} />
 
-      <label className="flex items-center gap-2 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          className="w-4 h-4 accent-gold-500"
-          checked={multiFace}
-          onChange={(e) => setMultiFace(e.target.checked)}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Layout</label>
+        <select
+          className="input"
+          value={linkType}
+          onChange={(e) => setLinkType(e.target.value as LinkType | "")}
           disabled={loading}
-        />
-        <span className="text-sm font-medium text-neutral-300">Multi-face card</span>
-      </label>
+        >
+          <option value="">None (single-faced)</option>
+          {LINK_TYPES.map((t) => (
+            <option key={t} value={t}>{linkTypeLabel(t)}</option>
+          ))}
+        </select>
+      </div>
 
-      {multiFace && (
+      {linkType && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
           <FaceFields form={back} onChange={setBack} loading={loading} />
