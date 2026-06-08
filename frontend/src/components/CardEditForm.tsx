@@ -7,10 +7,39 @@ import {
   type LinkType,
 } from "mtg-crucible/parser";
 
-/** Human-friendly label for a link type (the dropdown options). */
+/** Human-friendly label for a link type (the dropdown options). Native
+ *  <option>s can't render badges, so newly-added layouts get an inline
+ *  text flair instead. */
 function linkTypeLabel(t: LinkType): string {
   if (t === "modal_dfc") return "Modal DFC";
+  if (t === "prepare") return "Prepare  🔥 NEW";
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Layouts listed newest-first (by MTG introduction), so the freshest options
+// sit right under "None" at the top. Plain strings (not LinkType) so we can
+// list values like "room" that the package's runtime LINK_TYPES has but its
+// LinkType union currently omits. Anything unranked sorts to the end, so future
+// crucible additions still render.
+const LAYOUT_ORDER: string[] = [
+  "prepare",   // newest
+  "omen",
+  "room",
+  "modal_dfc",
+  "adventure",
+  "aftermath",
+  "fuse",
+  "transform",
+  "flip",
+  "split",     // oldest
+];
+
+function orderedLinkTypes(): LinkType[] {
+  const rank = (t: LinkType) => {
+    const i = LAYOUT_ORDER.indexOf(t);
+    return i === -1 ? LAYOUT_ORDER.length : i;
+  };
+  return [...LINK_TYPES].sort((a, b) => rank(a) - rank(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +354,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
           disabled={loading}
         >
           <option value="">None (single-faced)</option>
-          {LINK_TYPES.map((t) => (
+          {orderedLinkTypes().map((t) => (
             <option key={t} value={t}>{linkTypeLabel(t)}</option>
           ))}
         </select>
