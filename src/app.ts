@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import {
   getCard,
-  getLatestCards,
+  getCardsPage,
   softDeleteCard,
 } from "./card-table.js";
 import {
@@ -43,13 +43,15 @@ function isDebug(): boolean {
 
 app.get("/api/cards", async (c) => {
   try {
-    const limit = parseInt(c.req.query("limit") || "300", 10);
-    const cards = await getLatestCards(limit);
-    const cardsWithDisplay = cards.map((card) => ({
+    const limit = parseInt(c.req.query("limit") || "48", 10);
+    const cursor = c.req.query("cursor") || undefined;
+    const page = await getCardsPage({ limit, cursor });
+    const cardsWithDisplay = page.cards.map((card) => ({
       ...card,
-      display: buildDisplay(card),
+      // Gallery renders the small low-q thumbnail for fast loads.
+      display: buildDisplay(card, { thumbnail: true }),
     }));
-    return c.json({ cards: cardsWithDisplay });
+    return c.json({ cards: cardsWithDisplay, nextCursor: page.nextCursor });
   } catch (err: any) {
     console.error("[API] GET /api/cards error:", err);
     return c.json({ error: err.message }, 500);
@@ -156,7 +158,13 @@ app.post("/api/cards", async (c) => {
       if (generated.rendered.backFace) {
         dataUrls.push(`data:image/webp;base64,${generated.rendered.backFace.toString("base64")}`);
       }
-      const responseCard = buildCardRecord(generated, dataUrls);
+      const thumbDataUrls = [
+        `data:image/webp;base64,${generated.thumbnail.frontFace.toString("base64")}`,
+      ];
+      if (generated.thumbnail.backFace) {
+        thumbDataUrls.push(`data:image/webp;base64,${generated.thumbnail.backFace.toString("base64")}`);
+      }
+      const responseCard = buildCardRecord(generated, dataUrls, thumbDataUrls);
       const responsePayload: CardResponse = {
         card: { ...responseCard, display: buildDisplay(responseCard) },
         canEdit: true,

@@ -7,11 +7,14 @@ import {
   getArtDimensions,
   normalizeCard,
   renderCardOnly,
+  renderThumbnailOnly,
   uploadFaces,
+  uploadThumbnailFaces,
 } from "./card-renderer.js";
 import {
   getCard,
   commitCard,
+  GALLERY_PARTITION,
 } from "./card-table.js";
 import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
@@ -186,6 +189,8 @@ export interface GeneratedCard {
    *  `persistGeneratedCard`. */
   cardData: CardData;
   rendered: RenderedCard;
+  /** Low-quality render used for gallery thumbnails. */
+  thumbnail: RenderedCard;
   pendingArtUploads: { buffer: Buffer; key: string }[];
   prompt: string;
   creatorId: string;
@@ -194,12 +199,19 @@ export interface GeneratedCard {
   createdDate: string;
 }
 
-/** Build a CardRecord from a GeneratedCard plus a renderedUrls array (S3 URLs or data URLs). */
-export function buildCardRecord(g: GeneratedCard, renderedUrls: string[]): CardRecord {
+/** Build a CardRecord from a GeneratedCard plus rendered/thumbnail URL arrays (S3 URLs or data URLs). */
+export function buildCardRecord(
+  g: GeneratedCard,
+  renderedUrls: string[],
+  thumbnailUrls: string[],
+): CardRecord {
   return {
     id: g.cardId,
     cardData: g.cardData,
     renderedUrls,
+    thumbnailUrls,
+    dummyHashKey: GALLERY_PARTITION,
+    sequenceNumber: new Date(g.createdDate).getTime(),
     crucibleText: g.rendered.crucibleText,
     scryfallText: g.rendered.scryfallText,
     scryfallJson: g.rendered.scryfallJson,
@@ -248,7 +260,12 @@ export async function generateRenderedCard(
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
-  const rendered = await renderCardOnly(cardData);
+  // Full render + low-q thumbnail in parallel, both while artUrls are still
+  // Buffers (before reserveArtUrls swaps them for not-yet-uploaded S3 URLs).
+  const [rendered, thumbnail] = await Promise.all([
+    renderCardOnly(cardData),
+    renderThumbnailOnly(cardData),
+  ]);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
 
   // Renderer is done with the Buffer artUrls; swap each Buffer for its
@@ -260,6 +277,7 @@ export async function generateRenderedCard(
     cardId,
     cardData,
     rendered,
+    thumbnail,
     pendingArtUploads,
     prompt: description,
     creatorId,
@@ -291,7 +309,10 @@ export async function applyFieldEdits(
     cardData.linkedCard.artUrl = original.cardData.linkedCard.artUrl;
   }
 
-  const rendered = await renderCardOnly(cardData);
+  const [rendered, thumbnail] = await Promise.all([
+    renderCardOnly(cardData),
+    renderThumbnailOnly(cardData),
+  ]);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
   const pendingArtUploads = reserveArtUrls(cardData);
 
@@ -299,6 +320,7 @@ export async function applyFieldEdits(
     cardId,
     cardData,
     rendered,
+    thumbnail,
     pendingArtUploads,
     prompt: original.prompt,
     creatorId,
@@ -310,11 +332,12 @@ export async function applyFieldEdits(
 
 /** Phase 2: upload all art + rendered faces to S3, write CardRecord to DDB. */
 export async function persistGeneratedCard(g: GeneratedCard): Promise<CardRecord> {
-  const [renderedUrls] = await Promise.all([
+  const [renderedUrls, thumbnailUrls] = await Promise.all([
     uploadFaces(g.rendered),
+    uploadThumbnailFaces(g.thumbnail),
     Promise.all(g.pendingArtUploads.map((p) => uploadBuffer(p.buffer, p.key, "image/png"))),
   ]);
-  const record = buildCardRecord(g, renderedUrls);
+  const record = buildCardRecord(g, renderedUrls, thumbnailUrls);
   await commitCard(record, g.mode === "edit" ? g.parentId : undefined);
   return record;
 }

@@ -2,11 +2,20 @@ import type { Card, CardData, CardResponse } from "../types/card";
 
 const API_BASE = "/api";
 
-export async function fetchCards(limit = 300): Promise<Card[]> {
-  const response = await fetch(`${API_BASE}/cards?limit=${limit}`);
+export interface CardsPage {
+  cards: Card[];
+  nextCursor?: string;
+}
+
+/** One page of gallery cards, newest first. Pass the previous page's
+ *  `nextCursor` to fetch the next page; an absent cursor means exhausted. */
+export async function fetchCardsPage(cursor?: string, limit = 60): Promise<CardsPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  const response = await fetch(`${API_BASE}/cards?${params}`);
   if (!response.ok) throw new Error("Failed to fetch cards");
   const data = await response.json();
-  return data.cards;
+  return { cards: data.cards, nextCursor: data.nextCursor };
 }
 
 export async function fetchCard(id: string): Promise<CardResponse> {

@@ -36,6 +36,25 @@ export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> 
   return rendered;
 }
 
+/** Render a low-quality webp thumbnail (front + optional back) for the gallery. */
+export async function renderThumbnailOnly(cardData: CardData): Promise<RenderedCard> {
+  const start = Date.now();
+  const rendered = await renderCard(cardData, { quality: "low", format: "webp" });
+  console.log(`[Render] Thumbnail done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+  return rendered;
+}
+
+/** Upload thumbnail face buffers to S3 in parallel. */
+export async function uploadThumbnailFaces(rendered: RenderedCard): Promise<string[]> {
+  const uploads: Promise<string>[] = [
+    uploadBuffer(rendered.frontFace, `thumbnails/${uuid()}.webp`, "image/webp"),
+  ];
+  if (rendered.backFace) {
+    uploads.push(uploadBuffer(rendered.backFace, `thumbnails/${uuid()}-back.webp`, "image/webp"));
+  }
+  return Promise.all(uploads);
+}
+
 /** Upload front (and back, if present) face buffers to S3 in parallel. */
 export async function uploadFaces(rendered: RenderedCard): Promise<string[]> {
   const uploads: Promise<string>[] = [
@@ -47,20 +66,28 @@ export async function uploadFaces(rendered: RenderedCard): Promise<string[]> {
   return Promise.all(uploads);
 }
 
-/** Build a MtgCardDisplayData from stored data — no re-rendering needed. */
-export function buildDisplay(doc: {
-  renderedUrls: string[];
-  rotations: import("mtg-crucible").Rotation[];
-  cardData: CardData;
-  crucibleText: string;
-  scryfallText: string;
-  scryfallJson: string;
-}): MtgCardDisplayData | undefined {
-  if (!doc.renderedUrls.length || !doc.renderedUrls[0]) return undefined;
+/** Build a MtgCardDisplayData from stored data — no re-rendering needed.
+ *  Pass `thumbnail: true` to source the (small) gallery thumbnail faces; it
+ *  falls back to the full-resolution renderedUrls when no thumbnail exists. */
+export function buildDisplay(
+  doc: {
+    renderedUrls: string[];
+    thumbnailUrls?: string[];
+    rotations: import("mtg-crucible").Rotation[];
+    cardData: CardData;
+    crucibleText: string;
+    scryfallText: string;
+    scryfallJson: string;
+  },
+  opts: { thumbnail?: boolean } = {},
+): MtgCardDisplayData | undefined {
+  const faces =
+    opts.thumbnail && doc.thumbnailUrls?.length ? doc.thumbnailUrls : doc.renderedUrls;
+  if (!faces.length || !faces[0]) return undefined;
 
   return {
-    frontFaceImageUrl: doc.renderedUrls[0],
-    backFaceImageUrl: doc.renderedUrls.length > 1 ? doc.renderedUrls[1] : undefined,
+    frontFaceImageUrl: faces[0],
+    backFaceImageUrl: faces.length > 1 ? faces[1] : undefined,
     name: doc.cardData.name || "",
     rotations: doc.rotations,
     scryfallJson: doc.scryfallJson,

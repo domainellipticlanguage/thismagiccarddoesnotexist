@@ -16,6 +16,13 @@ export interface CardRecord {
   id: string;
   cardData: CardData;
   renderedUrls: string[];
+  /** Low-quality webp faces (front, optional back) used for fast gallery loads. */
+  thumbnailUrls: string[];
+  /** Constant partition key for the SequenceNumberIndex GSI (always 0) so the
+   *  whole gallery lives in one partition and can be queried newest-first. */
+  dummyHashKey: number;
+  /** GSI sort key — epoch ms derived from createdDate. Pages the gallery. */
+  sequenceNumber: number;
   crucibleText: string;
   scryfallText: string;
   scryfallJson: string;
@@ -42,6 +49,8 @@ export interface CardResponse {
 
 export interface CardsResponse {
   cards: CardDocument[];
+  /** Opaque cursor for the next page; absent when the gallery is exhausted. */
+  nextCursor?: string;
 }
 
 export interface CreateCardRequest {

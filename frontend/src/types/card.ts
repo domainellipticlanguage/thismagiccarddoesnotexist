@@ -24,6 +24,8 @@ export interface Card {
   // S3 URLs after persistence; data: URLs in the streaming-create response
   // before S3 catches up.
   renderedUrls: string[];
+  // Low-quality webp faces for fast gallery loads (front, optional back).
+  thumbnailUrls?: string[];
   display?: MtgCardDisplayData;
   creatorId: string;
   parentId?: string;
