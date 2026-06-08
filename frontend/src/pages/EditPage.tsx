@@ -34,10 +34,20 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     }, { replace: true });
   };
 
+  // Initial load only — fetch the card if we didn't arrive with it preloaded
+  // in router state. Runs once on mount (EditPage is keyed by :id in App.tsx,
+  // so a real route change remounts us and re-runs this). We must NOT re-run on
+  // [id, initial] changes: after an in-place edit we advance the URL with
+  // history.replaceState to avoid a remount, which leaves useParams `id`
+  // pointing at the ORIGINAL card AND nulls router state (flipping `initial`).
+  // Re-running would then refetch that stale id and clobber the freshly-edited
+  // card — the preview image reverts to the first version while the form, which
+  // captured the latest cardData on mount, still shows the most recent text.
   useEffect(() => {
     if (!id || initial) return;
     fetchCard(id).then((data) => setCard(data.card)).catch((err) => setError(err.message)).finally(() => setLoading(false));
-  }, [id, initial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleAIEdit(description: string) {
     if (!currentId) return;
@@ -65,8 +75,16 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     if (!currentId) return;
     setSaving(true); setError(null);
     try {
-      const newId = await editCardFields(currentId, cardData);
-      // Stay on edit page — update URL and reload card to show new preview.
+      const newId = await editCardFields(currentId, cardData, mode);
+      if (mode === "copy") {
+        // Copy creates a separate card; land on its edit page so the user can
+        // keep iterating on the remix (mirrors the AI remix flow). Keep the
+        // Advanced mode that produced this remix so the user stays in it.
+        const data = await fetchCard(newId);
+        navigate(`/card/${newId}/edit?type=advanced`, { state: data });
+        return;
+      }
+      // Edit: stay on edit page — update URL and reload card to show new preview.
       const data = await fetchCard(newId);
       setCard(data.card);
       setCurrentId(newId);
@@ -89,12 +107,10 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       <div className="flex items-center justify-between mb-6 gap-4">
         <h1 className="font-display text-2xl text-gold-400">{title}</h1>
         <div className="flex items-center gap-3">
-          {mode === "edit" && (
-            <div className="flex bg-neutral-900 rounded-lg p-0.5">
-              <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>AI Edit</button>
-              <button onClick={() => setEditMode("advanced")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "advanced" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>Advanced</button>
-            </div>
-          )}
+          <div className="flex bg-neutral-900 rounded-lg p-0.5">
+            <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "AI Remix" : "AI Edit"}</button>
+            <button onClick={() => setEditMode("advanced")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "advanced" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>Advanced</button>
+          </div>
           {currentId && (
             <Link to={`/card/${currentId}`} className="text-sm text-neutral-400 hover:text-gold-400 transition-colors">
               View card →
@@ -112,23 +128,23 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
                 <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />
               </div>
             )}
-            {mode === "edit" && editMode === "advanced" && (
+            {editMode === "advanced" && (
               <button type="submit" form="advanced-edit-form" disabled={saving}
                 className="w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
                 {saving && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
-                {saving ? "Saving..." : "Save & Re-render"}
+                {saving ? (mode === "copy" ? "Creating..." : "Saving...") : (mode === "copy" ? "Create Remix" : "Save & Re-render")}
               </button>
             )}
           </div>
           <div className="lg:col-span-3">
             {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{error}</div>}
-            {mode === "copy" || editMode === "ai" ? (
+            {editMode === "ai" ? (
               <div>
                 <p className="text-sm text-neutral-400 mb-4">{mode === "copy" ? "Describe how you want to remix this card." : "Describe the changes you want to make."}</p>
                 <CreateForm onSubmit={handleAIEdit} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Submit Edits"} showSuggest={mode === "copy"} />
               </div>
             ) : (
-              <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} />
+              <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Save & Re-render"} />
             )}
           </div>
         </div>

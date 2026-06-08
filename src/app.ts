@@ -97,13 +97,14 @@ app.delete("/api/cards/:id", async (c) => {
 });
 
 app.post("/api/cards/:id/edit", async (c) => {
-  let body: { cardData?: CardData };
+  let body: { cardData?: CardData; mode?: "edit" | "copy" };
   try {
-    body = (await c.req.json()) as { cardData?: CardData };
+    body = (await c.req.json()) as { cardData?: CardData; mode?: "edit" | "copy" };
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
   if (!body.cardData) return c.json({ error: "cardData is required" }, 400);
+  const mode = body.mode === "copy" ? "copy" : "edit";
 
   try {
     const id = c.req.param("id");
@@ -111,11 +112,14 @@ app.post("/api/cards/:id/edit", async (c) => {
     if (!original) return c.json({ error: "Card not found" }, 404);
 
     const creatorId = getCreatorId(c);
-    if (!isDebug() && original.creatorId !== creatorId) {
+    // "copy" produces an independent new card and never mutates the original,
+    // so (like the AI Copy & Remix path) it isn't gated on ownership. Only an
+    // in-place "edit" requires the caller to own the card.
+    if (mode === "edit" && !isDebug() && original.creatorId !== creatorId) {
       return c.json({ error: "Not authorized" }, 403);
     }
 
-    const newCard = await applyFieldEdits(body.cardData, original, creatorId);
+    const newCard = await applyFieldEdits(body.cardData, original, creatorId, mode);
     return c.json({ card_id: newCard.id });
   } catch (err: any) {
     console.error("[API] POST edit error:", err);

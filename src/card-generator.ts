@@ -287,26 +287,50 @@ export async function generateRenderedCard(
   };
 }
 
-/** Advanced edit: re-render `cardData` against an existing card (no LLM, no new art). */
+/** Advanced edit: re-render `cardData` against an existing card (no LLM).
+ *  Art is reused from the original, except for faces whose artDescription was
+ *  changed in the form — those are regenerated from the new description. */
 export async function applyFieldEdits(
   cardData: CardData,
   original: CardDocument,
   creatorId: string,
+  // "edit" supersedes the original (it leaves the gallery); "copy" leaves the
+  // original untouched and persists an independent new card (Copy & Remix).
+  mode: "edit" | "copy" = "edit",
 ): Promise<CardRecord> {
   const cardId = uuid();
-  console.log(`[Pipeline] field edit ${cardId} (parent ${original.id})`);
 
-  // The form may not re-emit artUrl per face — inherit from the original
-  // so the renderer has art to draw with.
-  if (!cardData.artUrl && typeof original.cardData.artUrl === "string") {
-    cardData.artUrl = original.cardData.artUrl;
-  }
-  if (
-    cardData.linkedCard &&
-    !cardData.linkedCard.artUrl &&
-    typeof original.cardData.linkedCard?.artUrl === "string"
-  ) {
-    cardData.linkedCard.artUrl = original.cardData.linkedCard.artUrl;
+  // The form preserves artUrl from the original (it only edits text fields), so
+  // by default every face keeps its existing art. Compare each face's new
+  // artDescription against the original: if it changed, regenerate that face's
+  // art from the new description; otherwise inherit the original art.
+  const faces = [cardData, cardData.linkedCard];
+  const origFaces = [original.cardData, original.cardData.linkedCard];
+  const norm = (s?: string) => (s ?? "").trim();
+
+  const directives: ArtDirective[] = faces.map((face, i) => {
+    if (!face) return "keep_self";
+    // Inherit the original art so unchanged faces render with it.
+    if (!face.artUrl && typeof origFaces[i]?.artUrl === "string") {
+      face.artUrl = origFaces[i]!.artUrl;
+    }
+    const changed = norm(face.artDescription) !== norm(origFaces[i]?.artDescription);
+    return changed && norm(face.artDescription) ? "generate" : "keep_self";
+  });
+
+  const regen = directives.some((d) => d === "generate");
+  console.log(`[Pipeline] field ${mode} ${cardId} (parent ${original.id})${regen ? " [art regen]" : ""}`);
+
+  if (regen) {
+    // Clear artUrl on the faces being regenerated so the generator fills them;
+    // unchanged faces keep their inherited URL untouched.
+    faces.forEach((face, i) => {
+      if (face && directives[i] === "generate") face.artUrl = undefined;
+    });
+    // Collapse shared-art layouts (room, flip) before generating, mirroring the
+    // LLM create path.
+    combineSharedArtDescriptions(cardData);
+    await generateArtForAllFaces(cardData, directives, original);
   }
 
   const [rendered, thumbnail] = await Promise.all([
@@ -325,7 +349,7 @@ export async function applyFieldEdits(
     prompt: original.prompt,
     creatorId,
     parentId: original.id,
-    mode: "edit",
+    mode,
     createdDate: new Date().toISOString(),
   });
 }

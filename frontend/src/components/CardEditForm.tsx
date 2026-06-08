@@ -278,9 +278,10 @@ interface CardEditFormProps {
   initialCardData: CardData;
   onSave: (cardData: CardData) => void;
   loading: boolean;
+  submitLabel?: string;
 }
 
-export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormProps) {
+export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "Save & Re-render" }: CardEditFormProps) {
   const [front, setFront] = useState<FaceFormState>(() => initFaceForm(initialCardData));
   const [back, setBack] = useState<FaceFormState>(() => initFaceForm(initialCardData.linkedCard));
   // "" = no secondary card (single-faced); otherwise the chosen LinkType.
@@ -342,7 +343,7 @@ export function CardEditForm({ initialCardData, onSave, loading }: CardEditFormP
       <button type="submit" disabled={loading}
         className="lg:hidden w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
         {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
-        {loading ? "Saving..." : "Save & Re-render"}
+        {loading ? "Saving..." : submitLabel}
       </button>
     </form>
   );

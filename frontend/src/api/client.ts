@@ -29,11 +29,15 @@ export async function deleteCard(id: string): Promise<void> {
   if (!response.ok) throw new Error("Failed to delete card");
 }
 
-export async function editCardFields(id: string, cardData: CardData): Promise<string> {
+export async function editCardFields(
+  id: string,
+  cardData: CardData,
+  mode: "edit" | "copy" = "edit"
+): Promise<string> {
   const response = await fetch(`${API_BASE}/cards/${id}/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cardData }),
+    body: JSON.stringify({ cardData, mode }),
   });
   if (!response.ok) {
     const error = await response.json();
