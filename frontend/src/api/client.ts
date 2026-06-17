@@ -29,6 +29,14 @@ export async function deleteCard(id: string): Promise<void> {
   if (!response.ok) throw new Error("Failed to delete card");
 }
 
+/** A card's current bug report (or null). The card object never carries this —
+ *  it's a separate, mutable resource — so the button reads it directly. */
+export async function fetchBugReport(id: string): Promise<BugReport | null> {
+  const response = await fetch(`${API_BASE}/cards/${id}/bug`);
+  if (!response.ok) return null;
+  return (await response.json()).bugReport ?? null;
+}
+
 /** Report a rendering bug on a card. `text` is an optional explanation. A new
  *  report overwrites any previous one. Returns the saved report. */
 export async function reportBug(id: string, text: string): Promise<BugReport> {

@@ -223,11 +223,11 @@ interface FaceFieldsProps {
   form: FaceFormState;
   onChange: (f: FaceFormState) => void;
   loading: boolean;
-  /** Hide the Art Description field (used when "No art" is on). */
-  hideArtDescription?: boolean;
+  /** Gray out + disable the Art Description field (when "No artwork" is on). */
+  artDisabled?: boolean;
 }
 
-function FaceFields({ form, onChange, loading, hideArtDescription }: FaceFieldsProps) {
+function FaceFields({ form, onChange, loading, artDisabled }: FaceFieldsProps) {
   const setField = <K extends keyof FaceFormState>(key: K, value: FaceFormState[K]) =>
     onChange({ ...form, [key]: value });
 
@@ -299,12 +299,10 @@ function FaceFields({ form, onChange, loading, hideArtDescription }: FaceFieldsP
         <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} placeholder="Italic flavor text..." disabled={loading} />
       </div>
 
-      {!hideArtDescription && (
-        <div>
-          <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
-          <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading} />
-        </div>
-      )}
+      <div className={`transition-opacity ${artDisabled ? "opacity-40" : ""}`}>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
+        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading || artDisabled} />
+      </div>
     </div>
   );
 }
@@ -372,12 +370,15 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
 
   return (
     <form id="manual-edit-form" onSubmit={handleSubmit} className="space-y-6">
-      <FaceFields form={front} onChange={setFront} loading={loading} hideArtDescription={noArt} />
+      <FaceFields form={front} onChange={setFront} loading={loading} artDisabled={noArt} />
 
-      <label className="flex items-center gap-2 text-sm text-neutral-300 select-none">
+      <label className="flex items-start gap-2 text-sm text-neutral-300 select-none cursor-pointer">
         <input type="checkbox" checked={noArt} onChange={(e) => setNoArt(e.target.checked)} disabled={loading}
-          className="h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-gold-500 focus:ring-gold-500" />
-        No art — render an empty frame
+          className="mt-0.5 h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-gold-500 focus:ring-gold-500" />
+        <span>
+          No artwork
+          <span className="block text-xs text-neutral-500">Renders the card with an empty art box — no image is generated.</span>
+        </span>
       </label>
 
       <div>
@@ -398,7 +399,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       {linkType && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
-          <FaceFields form={back} onChange={setBack} loading={loading} hideArtDescription={noArt} />
+          <FaceFields form={back} onChange={setBack} loading={loading} artDisabled={noArt} />
         </fieldset>
       )}
 

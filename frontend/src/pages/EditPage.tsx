@@ -115,7 +115,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
             <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "AI Remix" : "AI Edit"}</button>
             <button onClick={() => setEditMode("manual")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "manual" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "Manual Remix" : "Manual Edit"}</button>
           </div>
-          <BugReportButton key={card.id} card={card} />
+          <BugReportButton key={card.id} cardId={card.id} />
           {currentId && (
             <Link to={`/card/${currentId}`} className="text-sm text-neutral-400 hover:text-gold-400 transition-colors">
               View card →

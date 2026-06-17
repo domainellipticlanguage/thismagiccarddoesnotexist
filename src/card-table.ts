@@ -8,7 +8,7 @@ import {
   QueryCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { CardRecord, CardDocument, BugReport } from "./types.js";
+import type { CardRecord, CardDocument, BugReport, BugReportItem } from "./types.js";
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -130,19 +130,27 @@ export async function getCardsPage(opts: { limit?: number; cursor?: string } = {
   return { cards, nextCursor: result.LastEvaluatedKey ? encodeCursor(result.LastEvaluatedKey) : undefined };
 }
 
-/** Set (overwrite) the bug report on a card. Throws if the card doesn't exist. */
-export async function setBugReport(id: string, text: string): Promise<BugReport> {
-  const bugReport: BugReport = { text, reportedAt: new Date().toISOString() };
-  await client.send(
-    new UpdateCommand({
-      TableName: tableName(),
-      Key: { id },
-      UpdateExpression: "SET bugReport = :b",
-      ExpressionAttributeValues: { ":b": bugReport },
-      ConditionExpression: "attribute_exists(id)",
-    })
+// Bug reports live as their own items so cards stay immutable. They share the
+// card table but use a namespaced key, and carry none of the gallery attributes
+// (dummyHashKey / isFinished), so they never surface in the GSI or scan filters.
+const bugKey = (cardId: string) => `BUG#${cardId}`;
+
+/** Read a card's current bug report, if any. */
+export async function getBugReport(cardId: string): Promise<BugReport | undefined> {
+  const result = await client.send(
+    new GetCommand({ TableName: tableName(), Key: { id: bugKey(cardId) } })
   );
-  return bugReport;
+  if (!result.Item) return undefined;
+  const { text, reportedAt } = result.Item as BugReportItem;
+  return { text, reportedAt };
+}
+
+/** Set (overwrite) a card's bug report. */
+export async function setBugReport(cardId: string, text: string): Promise<BugReport> {
+  const reportedAt = new Date().toISOString();
+  const item: BugReportItem = { id: bugKey(cardId), cardId, text, reportedAt };
+  await client.send(new PutCommand({ TableName: tableName(), Item: item }));
+  return { text, reportedAt };
 }
 
 export async function softDeleteCard(id: string): Promise<void> {

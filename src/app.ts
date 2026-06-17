@@ -9,6 +9,7 @@ import {
   getCard,
   getCardsPage,
   softDeleteCard,
+  getBugReport,
   setBugReport,
 } from "./card-table.js";
 import {
@@ -129,6 +130,18 @@ app.post("/api/cards/:id/edit", async (c) => {
   }
 });
 
+// A card's current bug report (a separate item, so the card stays immutable).
+// The 🐛 button reads this on mount; null means no report.
+app.get("/api/cards/:id/bug", async (c) => {
+  try {
+    const bugReport = await getBugReport(c.req.param("id"));
+    return c.json({ bugReport: bugReport ?? null });
+  } catch (err: any) {
+    console.error("[API] GET bug report error:", err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 // Report a rendering bug on a card. Open to anyone (gallery is public); a new
 // report overwrites the previous one.
 app.post("/api/cards/:id/bug", async (c) => {
@@ -141,12 +154,11 @@ app.post("/api/cards/:id/bug", async (c) => {
 
   try {
     const id = c.req.param("id");
+    const card = await getCard(id);
+    if (!card) return c.json({ error: "Card not found" }, 404);
     const bugReport = await setBugReport(id, (body.text || "").trim());
     return c.json({ bugReport });
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
-      return c.json({ error: "Card not found" }, 404);
-    }
     console.error("[API] POST bug report error:", err);
     return c.json({ error: err.message }, 500);
   }

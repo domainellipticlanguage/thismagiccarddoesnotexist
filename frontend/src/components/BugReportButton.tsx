@@ -1,24 +1,45 @@
-import { useState } from "react";
-import type { BugReport, Card } from "../types/card";
-import { reportBug } from "../api/client";
+import { useEffect, useState } from "react";
+import type { BugReport } from "../types/card";
+import { fetchBugReport, reportBug } from "../api/client";
 
 /** 🐛 button for reporting a rendering bug on a card. Neutral when clean,
  *  amber once a report exists. Clicking opens a popover that shows the existing
  *  report (if any) and lets the user submit/overwrite it. Open to anyone.
- *  Key this by card.id so it re-inits when the underlying card changes. */
-export function BugReportButton({ card }: { card: Card }) {
+ *
+ *  Bug reports are a separate mutable resource (the card stays immutable), so
+ *  this is self-contained: it reads its own state on mount and writes on submit,
+ *  with no bug data threaded through the card pages. The read is async and never
+ *  blocks page render — the button just starts neutral and flips to amber when
+ *  it resolves. Key by cardId so it re-inits when the card changes. */
+export function BugReportButton({ cardId }: { cardId: string }) {
   const [open, setOpen] = useState(false);
-  const [report, setReport] = useState<BugReport | null>(card.bugReport ?? null);
-  const [text, setText] = useState(card.bugReport?.text ?? "");
+  const [report, setReport] = useState<BugReport | null>(null);
+  const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reported = !!report;
+
+  // Load the current report on mount (non-blocking). Only seed the textarea if
+  // it's still empty, so we never clobber text the user is mid-edit.
+  useEffect(() => {
+    let active = true;
+    fetchBugReport(cardId)
+      .then((r) => {
+        if (!active) return;
+        setReport(r);
+        setText((cur) => cur || r?.text || "");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [cardId]);
 
   async function submit() {
     setSaving(true);
     setError(null);
     try {
-      const saved = await reportBug(card.id, text.trim());
+      const saved = await reportBug(cardId, text.trim());
       setReport(saved);
       setOpen(false);
     } catch (err: any) {

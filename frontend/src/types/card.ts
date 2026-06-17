@@ -38,7 +38,6 @@ export interface Card {
   isDeleted: boolean;
   isFinished: boolean;
   isSuperseded: boolean;
-  bugReport?: BugReport;
 }
 
 export interface CardResponse {
