@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   parseTypeLine,
   LINK_TYPES,
+  RARITIES,
   type CardData,
   type Color,
   type LinkType,
+  type Rarity,
 } from "mtg-crucible/parser";
 import { getCookie, setCookie } from "../lib/cookies";
 
@@ -225,9 +227,12 @@ interface FaceFieldsProps {
   loading: boolean;
   /** Gray out + disable the Art Description field (when "No artwork" is on). */
   artDisabled?: boolean;
+  /** Optional node rendered directly above Art Description (the No-artwork
+   *  toggle, passed to the front face only). */
+  artToggle?: ReactNode;
 }
 
-function FaceFields({ form, onChange, loading, artDisabled }: FaceFieldsProps) {
+function FaceFields({ form, onChange, loading, artDisabled, artToggle }: FaceFieldsProps) {
   const setField = <K extends keyof FaceFormState>(key: K, value: FaceFormState[K]) =>
     onChange({ ...form, [key]: value });
 
@@ -299,6 +304,8 @@ function FaceFields({ form, onChange, loading, artDisabled }: FaceFieldsProps) {
         <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} placeholder="Italic flavor text..." disabled={loading} />
       </div>
 
+      {artToggle}
+
       <div className={`transition-opacity ${artDisabled ? "opacity-40" : ""}`}>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
         <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading || artDisabled} />
@@ -336,8 +343,11 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
     const existing = initialCardData.designer;
     return existing && existing !== DEFAULT_DESIGNER ? existing : "";
   });
-  // "No art": render an empty/black art frame instead of generating artwork.
-  const [noArt, setNoArt] = useState(false);
+  // Whether to generate artwork. Off renders an empty/black art frame. Inverted
+  // at submit into the noArt flag the API expects.
+  const [generateArt, setGenerateArt] = useState(true);
+  // Card-level rarity (also drives the set-symbol color). Defaults to common.
+  const [rarity, setRarity] = useState<Rarity>(initialCardData.rarity ?? "common");
 
   const cardData = useMemo((): CardData => {
     const designerValue = designer.trim() || undefined;
@@ -345,6 +355,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       ...initialCardData,
       ...buildFaceFields(front),
       designer: designerValue,
+      rarity,
     };
     if (linkType) {
       base.linkType = linkType;
@@ -352,34 +363,55 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
         ...(initialCardData.linkedCard ?? {}),
         ...buildFaceFields(back),
         designer: designerValue,
+        rarity,
       };
     } else {
       base.linkType = undefined;
       base.linkedCard = undefined;
     }
     return base;
-  }, [front, back, linkType, designer, initialCardData]);
+  }, [front, back, linkType, designer, rarity, initialCardData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     // Remember the designer name so the next card pre-fills it.
     if (designer.trim()) setCookie(DESIGNER_COOKIE, designer.trim());
-    onSave(cardData, noArt);
+    onSave(cardData, !generateArt);
   };
 
   return (
     <form id="manual-edit-form" onSubmit={handleSubmit} className="space-y-6">
-      <FaceFields form={front} onChange={setFront} loading={loading} artDisabled={noArt} />
+      <FaceFields
+        form={front}
+        onChange={setFront}
+        loading={loading}
+        artDisabled={!generateArt}
+        artToggle={
+          <label className="flex items-center gap-3 text-sm text-neutral-300 select-none cursor-pointer">
+            <input type="checkbox" checked={generateArt} onChange={(e) => setGenerateArt(e.target.checked)} disabled={loading} className="sr-only peer" />
+            <span className="relative shrink-0 w-11 h-6 rounded-full bg-neutral-700 transition-colors peer-checked:bg-gold-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gold-500/50 peer-disabled:opacity-50 after:content-[''] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+            <span>
+              Generate artwork
+              <span className="block text-xs text-neutral-500">Off renders the card with an empty art box.</span>
+            </span>
+          </label>
+        }
+      />
 
-      <label className="flex items-start gap-2 text-sm text-neutral-300 select-none cursor-pointer">
-        <input type="checkbox" checked={noArt} onChange={(e) => setNoArt(e.target.checked)} disabled={loading}
-          className="mt-0.5 h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-gold-500 focus:ring-gold-500" />
-        <span>
-          No artwork
-          <span className="block text-xs text-neutral-500">Renders the card with an empty art box — no image is generated.</span>
-        </span>
-      </label>
+      <div>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Rarity</label>
+        <select className="input" value={rarity} onChange={(e) => setRarity(e.target.value as Rarity)} disabled={loading}>
+          {RARITIES.map((r) => (
+            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Designer</label>
+        <input className="input" value={designer} onChange={(e) => setDesigner(e.target.value)} placeholder="Your name (shown as the card's designer)" disabled={loading} />
+      </div>
 
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Layout</label>
@@ -399,14 +431,9 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       {linkType && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
-          <FaceFields form={back} onChange={setBack} loading={loading} artDisabled={noArt} />
+          <FaceFields form={back} onChange={setBack} loading={loading} artDisabled={!generateArt} />
         </fieldset>
       )}
-
-      <div>
-        <label className="block text-sm font-medium text-neutral-300 mb-1">Designer</label>
-        <input className="input" value={designer} onChange={(e) => setDesigner(e.target.value)} placeholder="Your name (shown as the card's designer)" disabled={loading} />
-      </div>
 
       {/* Bottom-of-form submit. On the edit page a sticky desktop button lives
           alongside the preview, so there it's mobile-only; the create page has
