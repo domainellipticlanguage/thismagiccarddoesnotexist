@@ -1,4 +1,4 @@
-import type { Card, CardData, CardResponse } from "../types/card";
+import type { BugReport, Card, CardData, CardResponse } from "../types/card";
 
 const API_BASE = "/api";
 
@@ -29,19 +29,50 @@ export async function deleteCard(id: string): Promise<void> {
   if (!response.ok) throw new Error("Failed to delete card");
 }
 
+/** Report a rendering bug on a card. `text` is an optional explanation. A new
+ *  report overwrites any previous one. Returns the saved report. */
+export async function reportBug(id: string, text: string): Promise<BugReport> {
+  const response = await fetch(`${API_BASE}/cards/${id}/bug`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to report bug");
+  }
+  return (await response.json()).bugReport;
+}
+
 export async function editCardFields(
   id: string,
   cardData: CardData,
-  mode: "edit" | "copy" = "edit"
+  mode: "edit" | "copy" = "edit",
+  noArt = false
 ): Promise<string> {
   const response = await fetch(`${API_BASE}/cards/${id}/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cardData, mode }),
+    body: JSON.stringify({ cardData, mode, noArt }),
   });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || "Failed to save edits");
+  }
+  return (await response.json()).card_id;
+}
+
+/** Manual create: persist a brand-new card from form fields (no LLM). Returns
+ *  the new card id. `noArt` renders an empty/black art frame. */
+export async function createManualCard(cardData: CardData, noArt = false): Promise<string> {
+  const response = await fetch(`${API_BASE}/cards/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cardData, noArt }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to create card");
   }
   return (await response.json()).card_id;
 }

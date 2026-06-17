@@ -1,4 +1,4 @@
-# This Magic Card Does Not Exist (v3)
+# This Magic Card Does Not Exist
 
 AI-powered Magic: The Gathering card generator.
 

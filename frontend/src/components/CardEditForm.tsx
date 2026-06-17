@@ -6,6 +6,12 @@ import {
   type Color,
   type LinkType,
 } from "mtg-crucible/parser";
+import { getCookie, setCookie } from "../lib/cookies";
+
+// Site credit used when no Designer is given. Mirrors the backend default; we
+// only avoid pre-filling the form with it so the field reads as "empty".
+const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
+const DESIGNER_COOKIE = "designer";
 
 /** Human-friendly label for a link type (the dropdown options). Native
  *  <option>s can't render badges, so newly-added layouts get an inline
@@ -217,9 +223,11 @@ interface FaceFieldsProps {
   form: FaceFormState;
   onChange: (f: FaceFormState) => void;
   loading: boolean;
+  /** Hide the Art Description field (used when "No art" is on). */
+  hideArtDescription?: boolean;
 }
 
-function FaceFields({ form, onChange, loading }: FaceFieldsProps) {
+function FaceFields({ form, onChange, loading, hideArtDescription }: FaceFieldsProps) {
   const setField = <K extends keyof FaceFormState>(key: K, value: FaceFormState[K]) =>
     onChange({ ...form, [key]: value });
 
@@ -291,10 +299,12 @@ function FaceFields({ form, onChange, loading }: FaceFieldsProps) {
         <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} placeholder="Italic flavor text..." disabled={loading} />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
-        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading} />
-      </div>
+      {!hideArtDescription && (
+        <div>
+          <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
+          <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading} />
+        </div>
+      )}
     </div>
   );
 }
@@ -305,45 +315,70 @@ function FaceFields({ form, onChange, loading }: FaceFieldsProps) {
 
 interface CardEditFormProps {
   initialCardData: CardData;
-  onSave: (cardData: CardData) => void;
+  onSave: (cardData: CardData, noArt: boolean) => void;
   loading: boolean;
   submitLabel?: string;
+  /** Always render the in-form submit button (the create flow has no sticky
+   *  desktop button of its own). Default false: button is mobile-only. */
+  alwaysShowSubmit?: boolean;
 }
 
-export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "Save & Re-render" }: CardEditFormProps) {
+export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "Save & Re-render", alwaysShowSubmit = false }: CardEditFormProps) {
   const [front, setFront] = useState<FaceFormState>(() => initFaceForm(initialCardData));
   const [back, setBack] = useState<FaceFormState>(() => initFaceForm(initialCardData.linkedCard));
   // "" = no secondary card (single-faced); otherwise the chosen LinkType.
   const [linkType, setLinkType] = useState<LinkType | "">(
     initialCardData.linkedCard ? initialCardData.linkType ?? "transform" : ""
   );
+  // Card-level Designer credit. Prefer the remembered cookie, then the card's
+  // own designer (unless it's the site default, which should read as blank).
+  const [designer, setDesigner] = useState<string>(() => {
+    const saved = getCookie(DESIGNER_COOKIE);
+    if (saved) return saved;
+    const existing = initialCardData.designer;
+    return existing && existing !== DEFAULT_DESIGNER ? existing : "";
+  });
+  // "No art": render an empty/black art frame instead of generating artwork.
+  const [noArt, setNoArt] = useState(false);
 
   const cardData = useMemo((): CardData => {
+    const designerValue = designer.trim() || undefined;
     const base: CardData = {
       ...initialCardData,
       ...buildFaceFields(front),
+      designer: designerValue,
     };
     if (linkType) {
       base.linkType = linkType;
       base.linkedCard = {
         ...(initialCardData.linkedCard ?? {}),
         ...buildFaceFields(back),
+        designer: designerValue,
       };
     } else {
       base.linkType = undefined;
       base.linkedCard = undefined;
     }
     return base;
-  }, [front, back, linkType, initialCardData]);
+  }, [front, back, linkType, designer, initialCardData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loading) onSave(cardData);
+    if (loading) return;
+    // Remember the designer name so the next card pre-fills it.
+    if (designer.trim()) setCookie(DESIGNER_COOKIE, designer.trim());
+    onSave(cardData, noArt);
   };
 
   return (
-    <form id="advanced-edit-form" onSubmit={handleSubmit} className="space-y-6">
-      <FaceFields form={front} onChange={setFront} loading={loading} />
+    <form id="manual-edit-form" onSubmit={handleSubmit} className="space-y-6">
+      <FaceFields form={front} onChange={setFront} loading={loading} hideArtDescription={noArt} />
+
+      <label className="flex items-center gap-2 text-sm text-neutral-300 select-none">
+        <input type="checkbox" checked={noArt} onChange={(e) => setNoArt(e.target.checked)} disabled={loading}
+          className="h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-gold-500 focus:ring-gold-500" />
+        No art — render an empty frame
+      </label>
 
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Layout</label>
@@ -363,14 +398,20 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       {linkType && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
-          <FaceFields form={back} onChange={setBack} loading={loading} />
+          <FaceFields form={back} onChange={setBack} loading={loading} hideArtDescription={noArt} />
         </fieldset>
       )}
 
-      {/* Bottom-of-form submit — only on narrow screens where the sticky
-          card+button above scrolls away. Desktop relies on the sticky one. */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300 mb-1">Designer</label>
+        <input className="input" value={designer} onChange={(e) => setDesigner(e.target.value)} placeholder="Your name (shown as the card's designer)" disabled={loading} />
+      </div>
+
+      {/* Bottom-of-form submit. On the edit page a sticky desktop button lives
+          alongside the preview, so there it's mobile-only; the create page has
+          no sticky button, so it sets alwaysShowSubmit. */}
       <button type="submit" disabled={loading}
-        className="lg:hidden w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
+        className={`${alwaysShowSubmit ? "" : "lg:hidden"} w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2`}>
         {loading && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
         {loading ? "Saving..." : submitLabel}
       </button>

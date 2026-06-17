@@ -6,6 +6,7 @@ import { MtgCard } from "mtg-crucible/react";
 import { CardEditForm } from "../components/CardEditForm";
 import { CreateForm } from "../components/CreateForm";
 import { LoadingSpinner } from "../components/LoadingSpinner";
+import { BugReportButton } from "../components/BugReportButton";
 
 export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const { id } = useParams<{ id: string }>();
@@ -24,8 +25,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flashCount, setFlashCount] = useState(0);
-  const editMode: "ai" | "advanced" = searchParams.get("type") === "advanced" ? "advanced" : "ai";
-  const setEditMode = (next: "ai" | "advanced") => {
+  // "advanced" is kept as a back-compat alias for the renamed "manual" mode so
+  // older shared links (?type=advanced) still open the manual form.
+  const typeParam = searchParams.get("type");
+  const editMode: "ai" | "manual" = typeParam === "manual" || typeParam === "advanced" ? "manual" : "ai";
+  const setEditMode = (next: "ai" | "manual") => {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
       if (next === "ai") params.delete("type");
@@ -71,17 +75,17 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     } finally { setSaving(false); }
   }
 
-  async function handleAdvancedSave(cardData: CardData) {
+  async function handleManualSave(cardData: CardData, noArt: boolean) {
     if (!currentId) return;
     setSaving(true); setError(null);
     try {
-      const newId = await editCardFields(currentId, cardData, mode);
+      const newId = await editCardFields(currentId, cardData, mode, noArt);
       if (mode === "copy") {
         // Copy creates a separate card; land on its edit page so the user can
         // keep iterating on the remix (mirrors the AI remix flow). Keep the
-        // Advanced mode that produced this remix so the user stays in it.
+        // Manual mode that produced this remix so the user stays in it.
         const data = await fetchCard(newId);
-        navigate(`/card/${newId}/edit?type=advanced`, { state: data });
+        navigate(`/card/${newId}/edit?type=manual`, { state: data });
         return;
       }
       // Edit: stay on edit page — update URL and reload card to show new preview.
@@ -109,8 +113,9 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
         <div className="flex items-center gap-3">
           <div className="flex bg-neutral-900 rounded-lg p-0.5">
             <button onClick={() => setEditMode("ai")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "ai" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "AI Remix" : "AI Edit"}</button>
-            <button onClick={() => setEditMode("advanced")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "advanced" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>Advanced</button>
+            <button onClick={() => setEditMode("manual")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "manual" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "Manual Remix" : "Manual Edit"}</button>
           </div>
+          <BugReportButton key={card.id} card={card} />
           {currentId && (
             <Link to={`/card/${currentId}`} className="text-sm text-neutral-400 hover:text-gold-400 transition-colors">
               View card →
@@ -128,8 +133,8 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
                 <MtgCard card={card.display} cardText={card.scryfallText} style={{ width: "100%" }} />
               </div>
             )}
-            {editMode === "advanced" && (
-              <button type="submit" form="advanced-edit-form" disabled={saving}
+            {editMode === "manual" && (
+              <button type="submit" form="manual-edit-form" disabled={saving}
                 className="w-full px-6 py-2.5 bg-gold-500 text-neutral-950 font-semibold rounded-lg hover:bg-gold-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2">
                 {saving && <span className="w-4 h-4 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />}
                 {saving ? (mode === "copy" ? "Creating..." : "Saving...") : (mode === "copy" ? "Create Remix" : "Save & Re-render")}
@@ -144,7 +149,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
                 <CreateForm onSubmit={handleAIEdit} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Submit Edits"} showSuggest={mode === "copy"} />
               </div>
             ) : (
-              <CardEditForm initialCardData={card.cardData} onSave={handleAdvancedSave} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Save & Re-render"} />
+              <CardEditForm initialCardData={card.cardData} onSave={handleManualSave} loading={saving} submitLabel={mode === "copy" ? "Create Remix" : "Save & Re-render"} />
             )}
           </div>
         </div>

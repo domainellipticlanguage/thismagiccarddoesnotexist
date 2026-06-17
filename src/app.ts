@@ -9,12 +9,14 @@ import {
   getCard,
   getCardsPage,
   softDeleteCard,
+  setBugReport,
 } from "./card-table.js";
 import {
   generateRenderedCard,
   persistGeneratedCard,
   buildCardRecord,
   applyFieldEdits,
+  createManualCard,
 } from "./card-generator.js";
 import { buildDisplay } from "./card-renderer.js";
 import type {
@@ -97,9 +99,9 @@ app.delete("/api/cards/:id", async (c) => {
 });
 
 app.post("/api/cards/:id/edit", async (c) => {
-  let body: { cardData?: CardData; mode?: "edit" | "copy" };
+  let body: { cardData?: CardData; mode?: "edit" | "copy"; noArt?: boolean };
   try {
-    body = (await c.req.json()) as { cardData?: CardData; mode?: "edit" | "copy" };
+    body = (await c.req.json()) as { cardData?: CardData; mode?: "edit" | "copy"; noArt?: boolean };
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
@@ -119,10 +121,53 @@ app.post("/api/cards/:id/edit", async (c) => {
       return c.json({ error: "Not authorized" }, 403);
     }
 
-    const newCard = await applyFieldEdits(body.cardData, original, creatorId, mode);
+    const newCard = await applyFieldEdits(body.cardData, original, creatorId, mode, body.noArt === true);
     return c.json({ card_id: newCard.id });
   } catch (err: any) {
     console.error("[API] POST edit error:", err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// Report a rendering bug on a card. Open to anyone (gallery is public); a new
+// report overwrites the previous one.
+app.post("/api/cards/:id/bug", async (c) => {
+  let body: { text?: string };
+  try {
+    body = (await c.req.json()) as { text?: string };
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  try {
+    const id = c.req.param("id");
+    const bugReport = await setBugReport(id, (body.text || "").trim());
+    return c.json({ bugReport });
+  } catch (err: any) {
+    if (err.name === "ConditionalCheckFailedException") {
+      return c.json({ error: "Card not found" }, 404);
+    }
+    console.error("[API] POST bug report error:", err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// Manual create: build a brand-new card from form fields with no LLM.
+app.post("/api/cards/manual", async (c) => {
+  let body: { cardData?: CardData; noArt?: boolean };
+  try {
+    body = (await c.req.json()) as { cardData?: CardData; noArt?: boolean };
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  if (!body.cardData) return c.json({ error: "cardData is required" }, 400);
+
+  try {
+    const creatorId = getCreatorId(c);
+    const newCard = await createManualCard(body.cardData, creatorId, body.noArt === true);
+    return c.json({ card_id: newCard.id });
+  } catch (err: any) {
+    console.error("[API] POST manual create error:", err);
     return c.json({ error: err.message }, 500);
   }
 });

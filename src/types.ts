@@ -11,6 +11,12 @@ export type ArtDirective =
   | "edit_self"      // Flux Kontext tweak of this face's existing art
   | "edit_other";    // Flux Kontext tweak of the other face's art
 
+/** A user-submitted rendering-bug report attached to a card. */
+export interface BugReport {
+  text: string;
+  reportedAt: string;
+}
+
 /** Single DynamoDB row — one card. */
 export interface CardRecord {
   id: string;
@@ -34,6 +40,8 @@ export interface CardRecord {
   isDeleted: boolean;
   isFinished: boolean;
   isSuperseded: boolean;
+  /** Latest rendering-bug report, if any (overwritten on each submission). */
+  bugReport?: BugReport;
 }
 
 /** API-facing card document (CardRecord + optional display data). */

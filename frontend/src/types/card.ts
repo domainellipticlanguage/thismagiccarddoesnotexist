@@ -13,6 +13,11 @@ export {
   SUPERTYPES_LIST,
 } from "mtg-crucible/parser";
 
+export interface BugReport {
+  text: string;
+  reportedAt: string;
+}
+
 export interface Card {
   id: string;
   crucibleText: string;
@@ -33,6 +38,7 @@ export interface Card {
   isDeleted: boolean;
   isFinished: boolean;
   isSuperseded: boolean;
+  bugReport?: BugReport;
 }
 
 export interface CardResponse {

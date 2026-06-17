@@ -8,7 +8,7 @@ import {
   QueryCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { CardRecord, CardDocument } from "./types.js";
+import type { CardRecord, CardDocument, BugReport } from "./types.js";
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
@@ -128,6 +128,21 @@ export async function getCardsPage(opts: { limit?: number; cursor?: string } = {
   const cards = (result.Items ?? []) as CardDocument[];
   console.log(`[DDB] gallery page: ${cards.length} cards (${((Date.now() - start) / 1000).toFixed(2)}s)`);
   return { cards, nextCursor: result.LastEvaluatedKey ? encodeCursor(result.LastEvaluatedKey) : undefined };
+}
+
+/** Set (overwrite) the bug report on a card. Throws if the card doesn't exist. */
+export async function setBugReport(id: string, text: string): Promise<BugReport> {
+  const bugReport: BugReport = { text, reportedAt: new Date().toISOString() };
+  await client.send(
+    new UpdateCommand({
+      TableName: tableName(),
+      Key: { id },
+      UpdateExpression: "SET bugReport = :b",
+      ExpressionAttributeValues: { ":b": bugReport },
+      ConditionExpression: "attribute_exists(id)",
+    })
+  );
+  return bugReport;
 }
 
 export async function softDeleteCard(id: string): Promise<void> {

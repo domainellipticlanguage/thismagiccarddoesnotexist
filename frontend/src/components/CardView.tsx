@@ -2,6 +2,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { MtgCard } from "mtg-crucible/react";
 import type { Card } from "../types/card";
 import { deleteCard } from "../api/client";
+import { BugReportButton } from "./BugReportButton";
 
 function fullName(card: Card): string {
   const a = card.cardData?.name;
@@ -58,6 +59,7 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
           {canDelete && (
             <button onClick={handleDelete} className="px-4 py-2 bg-red-900/50 text-red-300 rounded-lg hover:bg-red-900/80 transition-colors text-sm">Delete</button>
           )}
+          <BugReportButton key={card.id} card={card} />
         </div>
       </div>
     </div>

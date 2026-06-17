@@ -1,4 +1,4 @@
-# This Magic Card Does Not Exist (v3)
+# This Magic Card Does Not Exist
 
 AI-generated Magic: The Gathering cards. Describe a card; the system designs it, generates art, and renders a high-fidelity card image in about ten seconds.
 

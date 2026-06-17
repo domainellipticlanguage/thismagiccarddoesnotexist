@@ -18,6 +18,17 @@ import {
 } from "./card-table.js";
 import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
+/** Credit shown as a card's designer when the creator leaves it blank. */
+export const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
+
+/** Fall back to the site credit for any face missing an explicit designer. */
+function applyDesignerDefault(cardData: CardData): void {
+  if (!cardData.designer) cardData.designer = DEFAULT_DESIGNER;
+  if (cardData.linkedCard && !cardData.linkedCard.designer) {
+    cardData.linkedCard.designer = DEFAULT_DESIGNER;
+  }
+}
+
 /** Layouts that render a single piece of art shared across both faces of a
  *  2-card link. We merge the LLM's per-face descriptions into one prompt and
  *  hand it to the regular text-to-image generator. Mutates the primary's
@@ -246,10 +257,10 @@ export async function generateRenderedCard(
 
   const cardData = llmResult.cardData;
   cardData.artist = ART_MODEL;
-  cardData.designer = "thismagiccarddoesnotexist.com";
+  cardData.designer = DEFAULT_DESIGNER;
   if (cardData.linkedCard) {
     cardData.linkedCard.artist = ART_MODEL;
-    cardData.linkedCard.designer = "thismagiccarddoesnotexist.com";
+    cardData.linkedCard.designer = DEFAULT_DESIGNER;
   }
   console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
 
@@ -297,8 +308,15 @@ export async function applyFieldEdits(
   // "edit" supersedes the original (it leaves the gallery); "copy" leaves the
   // original untouched and persists an independent new card (Copy & Remix).
   mode: "edit" | "copy" = "edit",
+  // "No art": render an empty frame (black box) instead of generating/keeping
+  // any artwork. Manual mode only.
+  noArt = false,
 ): Promise<CardRecord> {
   const cardId = uuid();
+
+  // Manual edits carry an explicit card-level Designer; fall back to the site
+  // credit when the field is left blank.
+  applyDesignerDefault(cardData);
 
   // The form preserves artUrl from the original (it only edits text fields), so
   // by default every face keeps its existing art. Compare each face's new
@@ -310,6 +328,12 @@ export async function applyFieldEdits(
 
   const directives: ArtDirective[] = faces.map((face, i) => {
     if (!face) return "keep_self";
+    // "No art": drop any art and neither inherit nor generate. A null artUrl
+    // tells the renderer to leave the frame blank.
+    if (noArt) {
+      face.artUrl = undefined;
+      return "keep_self";
+    }
     // Inherit the original art so unchanged faces render with it.
     if (!face.artUrl && typeof origFaces[i]?.artUrl === "string") {
       face.artUrl = origFaces[i]!.artUrl;
@@ -350,6 +374,58 @@ export async function applyFieldEdits(
     creatorId,
     parentId: original.id,
     mode,
+    createdDate: new Date().toISOString(),
+  });
+}
+
+/** Manual create: build a brand-new card from form `cardData` with no LLM and
+ *  no parent. Art is generated from each face's artDescription; faces with an
+ *  empty description (or when `noArt` is set) render an empty/black frame. */
+export async function createManualCard(
+  cardData: CardData,
+  creatorId: string,
+  noArt = false,
+): Promise<CardRecord> {
+  const cardId = uuid();
+  applyDesignerDefault(cardData);
+  const norm = (s?: string) => (s ?? "").trim();
+
+  const faces = [cardData, cardData.linkedCard];
+  const directives: ArtDirective[] = faces.map((face) => {
+    if (!face) return "keep_self";
+    if (noArt || !norm(face.artDescription)) {
+      face.artUrl = undefined;
+      return "keep_self";
+    }
+    face.artist = ART_MODEL;
+    return "generate";
+  });
+
+  const regen = directives.some((d) => d === "generate");
+  console.log(`[Pipeline] manual create ${cardId}${noArt ? " [no art]" : ""}`);
+
+  if (regen) {
+    combineSharedArtDescriptions(cardData);
+    await generateArtForAllFaces(cardData, directives, undefined);
+  }
+
+  const [rendered, thumbnail] = await Promise.all([
+    renderCardOnly(cardData),
+    renderThumbnailOnly(cardData),
+  ]);
+  applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
+  const pendingArtUploads = reserveArtUrls(cardData);
+
+  return persistGeneratedCard({
+    cardId,
+    cardData,
+    rendered,
+    thumbnail,
+    pendingArtUploads,
+    prompt: "",
+    creatorId,
+    parentId: undefined,
+    mode: "create",
     createdDate: new Date().toISOString(),
   });
 }
