@@ -338,8 +338,13 @@ export async function applyFieldEdits(
     if (!face.artUrl && typeof origFaces[i]?.artUrl === "string") {
       face.artUrl = origFaces[i]!.artUrl;
     }
+    // Nothing to generate from without a description.
+    if (!norm(face.artDescription)) return "keep_self";
+    // Generate when the description changed, OR when the face still has no art
+    // (e.g. re-enabling art after a no-art render left it blank) — there a
+    // matching description must not block regeneration.
     const changed = norm(face.artDescription) !== norm(origFaces[i]?.artDescription);
-    return changed && norm(face.artDescription) ? "generate" : "keep_self";
+    return changed || !face.artUrl ? "generate" : "keep_self";
   });
 
   const regen = directives.some((d) => d === "generate");
