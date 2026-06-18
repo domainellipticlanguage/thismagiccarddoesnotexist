@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
-import { fetchCard, createCard, editCardFields } from "../api/client";
+import { fetchCard, createCard, editCardFields, deleteCard } from "../api/client";
 import type { Card, CardData, CardResponse } from "../types/card";
 import { MtgCard } from "mtg-crucible/react";
 import { CardEditForm } from "../components/CardEditForm";
@@ -20,6 +20,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   // is keyed by :id in App.tsx, so id changes always remount us fresh.
   const initial = (location.state as CardResponse | null) ?? null;
   const [card, setCard] = useState<Card | null>(initial?.card ?? null);
+  const [canDelete, setCanDelete] = useState(initial?.canDelete ?? false);
   const [currentId, setCurrentId] = useState(id);
   const [loading, setLoading] = useState(!initial);
   const [saving, setSaving] = useState(false);
@@ -49,7 +50,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
   // captured the latest cardData on mount, still shows the most recent text.
   useEffect(() => {
     if (!id || initial) return;
-    fetchCard(id).then((data) => setCard(data.card)).catch((err) => setError(err.message)).finally(() => setLoading(false));
+    fetchCard(id).then((data) => { setCard(data.card); setCanDelete(data.canDelete); }).catch((err) => setError(err.message)).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -66,6 +67,7 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       }
       // Edit: stay on the edit page so the user can keep iterating.
       setCard(response.card);
+      setCanDelete(response.canDelete);
       setCurrentId(response.card.id);
       setFlashCount((c) => c + 1);
       window.history.replaceState(null, "", `/card/${response.card.id}/edit${window.location.search}`);
@@ -91,11 +93,24 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
       // Edit: stay on edit page — update URL and reload card to show new preview.
       const data = await fetchCard(newId);
       setCard(data.card);
+      setCanDelete(data.canDelete);
       setCurrentId(newId);
       setFlashCount((c) => c + 1);
       window.history.replaceState(null, "", `/card/${newId}/edit${window.location.search}`);
     } catch (err: any) { setError(err.message); }
     finally { setSaving(false); }
+  }
+
+  async function handleDelete() {
+    if (!currentId) return;
+    const name = card?.cardData?.name || "this card";
+    if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
+    try {
+      await deleteCard(currentId);
+      navigate("/");
+    } catch (err: any) {
+      setError(err.message);
+    }
   }
 
   if (loading) return <LoadingSpinner fullScreen />;
@@ -116,6 +131,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
             <button onClick={() => setEditMode("manual")} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${editMode === "manual" ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"}`}>{mode === "copy" ? "Manual Remix" : "Manual Edit"}</button>
           </div>
           <BugReportButton key={card.id} cardId={card.id} />
+          {mode === "edit" && canDelete && (
+            <button onClick={handleDelete} className="px-4 py-2 bg-red-900/50 text-red-300 rounded-lg hover:bg-red-900/80 transition-colors text-sm">
+              Delete
+            </button>
+          )}
           {currentId && (
             <Link to={`/card/${currentId}`} className="text-sm text-neutral-400 hover:text-gold-400 transition-colors">
               View card →

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { BugReport } from "../types/card";
 import { fetchBugReport, reportBug } from "../api/client";
 
-/** 🐛 button for reporting a rendering bug on a card. Neutral when clean,
+/** 🪲 button for reporting a rendering bug on a card. Neutral when clean,
  *  amber once a report exists. Clicking opens a popover that shows the existing
  *  report (if any) and lets the user submit/overwrite it. Open to anyone.
  *
@@ -61,7 +61,7 @@ export function BugReportButton({ cardId }: { cardId: string }) {
             : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
         }`}
       >
-        <span aria-hidden>🐛</span>
+        <span aria-hidden>🪲</span>
         {reported ? "Bug reported" : "Report bug"}
       </button>
 
