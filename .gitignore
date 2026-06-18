@@ -11,3 +11,6 @@ frontend/node_modules
 .playwright-mcp
 eval/
 .claude
+
+# TypeScript incremental build cache
+*.tsbuildinfo
