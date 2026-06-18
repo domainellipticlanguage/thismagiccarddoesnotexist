@@ -56,7 +56,8 @@ export interface CardDocument extends CardRecord {
 }
 
 export interface CardResponse {
-  card: CardDocument;
+  // creatorId is the internal ownership token and is never sent to the client.
+  card: Omit<CardDocument, "creatorId">;
   canEdit: boolean;
   canDelete: boolean;
 }

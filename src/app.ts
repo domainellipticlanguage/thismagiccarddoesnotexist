@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { getCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
 import { stream } from "hono/streaming";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -28,14 +28,40 @@ import type { CardData } from "mtg-crucible";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const app = new Hono();
+type Env = { Variables: { creatorId: string } };
 
-function getCreatorId(c: Context): string {
-  return (
-    getCookie(c, "user_id") ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "anonymous"
-  );
+export const app = new Hono<Env>();
+
+const CREATOR_COOKIE = "creator_id";
+
+// Assign each visitor a stable, anonymous creator id via an HttpOnly cookie.
+// Replaces the old IP-based identity — no personal data, and not readable or
+// spoofable by client JS. Also stashed on the context so the request that first
+// mints the id can use it immediately (the cookie only arrives on the next one).
+app.use("*", async (c, next) => {
+  const id = getCookie(c, CREATOR_COOKIE) || crypto.randomUUID();
+  // Re-set on every request so the 400-day browser cap slides forward for
+  // active visitors (effectively permanent unless they're away 400+ days or
+  // clear storage). 400 days is the max Hono/browsers allow.
+  setCookie(c, CREATOR_COOKIE, id, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 400,
+    secure: !!process.env.LAMBDA_TASK_ROOT, // https in prod; http locally
+  });
+  c.set("creatorId", id);
+  await next();
+});
+
+function getCreatorId(c: Context<Env>): string {
+  return c.get("creatorId");
+}
+
+/** Drop the internal creator id before sending a card to the client. */
+function publicCard<T extends { creatorId?: string }>(card: T): Omit<T, "creatorId"> {
+  const { creatorId: _omit, ...rest } = card;
+  return rest;
 }
 
 function isDebug(): boolean {
@@ -50,7 +76,7 @@ app.get("/api/cards", async (c) => {
     const cursor = c.req.query("cursor") || undefined;
     const page = await getCardsPage({ limit, cursor });
     const cardsWithDisplay = page.cards.map((card) => ({
-      ...card,
+      ...publicCard(card),
       // Gallery renders the small low-q thumbnail for fast loads.
       display: buildDisplay(card, { thumbnail: true }),
     }));
@@ -72,7 +98,7 @@ app.get("/api/cards/:id", async (c) => {
 
     card.display = buildDisplay(card);
 
-    const response: CardResponse = { card, canEdit, canDelete: canEdit };
+    const response: CardResponse = { card: publicCard(card), canEdit, canDelete: canEdit };
     return c.json(response);
   } catch (err: any) {
     console.error("[API] GET /api/cards/:id error:", err);
@@ -247,7 +273,7 @@ app.post("/api/cards", async (c) => {
       }
       const responseCard = buildCardRecord(generated, dataUrls, thumbDataUrls);
       const responsePayload: CardResponse = {
-        card: { ...responseCard, display: buildDisplay(responseCard) },
+        card: publicCard({ ...responseCard, display: buildDisplay(responseCard) }),
         canEdit: true,
         canDelete: true,
       };

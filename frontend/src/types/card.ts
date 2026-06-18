@@ -32,7 +32,7 @@ export interface Card {
   // Low-quality webp faces for fast gallery loads (front, optional back).
   thumbnailUrls?: string[];
   display?: MtgCardDisplayData;
-  creatorId: string;
+  // creatorId is an internal server-side ownership token; never sent to clients.
   parentId?: string;
   createdDate: string;
   isDeleted: boolean;
