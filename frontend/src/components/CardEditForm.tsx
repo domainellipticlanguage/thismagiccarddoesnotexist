@@ -15,6 +15,10 @@ import { getCookie, setCookie } from "../lib/cookies";
 const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
 const DESIGNER_COOKIE = "designer";
 
+// Layout dropdown selection: single-faced, infer-the-layout, or an explicit
+// layout override.
+type LayoutChoice = "none" | "auto" | LinkType;
+
 /** Human-friendly label for a link type (the dropdown options). Native
  *  <option>s can't render badges, so newly-added layouts get an inline
  *  text flair instead. */
@@ -325,10 +329,14 @@ interface CardEditFormProps {
 export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "Save & Re-render", alwaysShowSubmit = false }: CardEditFormProps) {
   const [front, setFront] = useState<FaceFormState>(() => initFaceForm(initialCardData));
   const [back, setBack] = useState<FaceFormState>(() => initFaceForm(initialCardData.linkedCard));
-  // "" = no secondary card (single-faced); otherwise the chosen LinkType.
-  const [linkType, setLinkType] = useState<LinkType | "">(
-    initialCardData.linkedCard ? initialCardData.linkType ?? "transform" : ""
-  );
+  // Layout: "none" = single-faced (no linked card); "auto" = multi-face, let
+  // crucible infer the layout (linkType isn't stored); otherwise an explicit
+  // layout override that IS stored. A card with a linked card but no stored
+  // linkType (the new default) loads as "auto".
+  const [layout, setLayout] = useState<LayoutChoice>(() => {
+    if (!initialCardData.linkedCard) return "none";
+    return initialCardData.linkType ?? "auto";
+  });
   // Card-level Designer credit. Prefer the remembered cookie, then the card's
   // own designer (unless it's the site default, which should read as blank).
   const [designer, setDesigner] = useState<string>(() => {
@@ -348,8 +356,10 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       designer: designerValue,
       rarity,
     };
-    if (linkType) {
-      base.linkType = linkType;
+    if (layout !== "none") {
+      // "auto" leaves linkType undefined so crucible infers it at render time;
+      // a specific choice is stored as an explicit override.
+      base.linkType = layout === "auto" ? undefined : layout;
       base.linkedCard = {
         ...(initialCardData.linkedCard ?? {}),
         ...buildFaceFields(back),
@@ -361,7 +371,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       base.linkedCard = undefined;
     }
     return base;
-  }, [front, back, linkType, designer, rarity, initialCardData]);
+  }, [front, back, layout, designer, rarity, initialCardData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,18 +403,19 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
         <label className="block text-sm font-medium text-neutral-300 mb-1">Layout</label>
         <select
           className="input"
-          value={linkType}
-          onChange={(e) => setLinkType(e.target.value as LinkType | "")}
+          value={layout}
+          onChange={(e) => setLayout(e.target.value as LayoutChoice)}
           disabled={loading}
         >
-          <option value="">None (single-faced)</option>
+          <option value="none">None (single-faced)</option>
+          <option value="auto">Auto</option>
           {orderedLinkTypes().map((t) => (
             <option key={t} value={t}>{linkTypeLabel(t)}</option>
           ))}
         </select>
       </div>
 
-      {linkType && (
+      {layout !== "none" && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
           <FaceFields form={back} onChange={setBack} loading={loading} />

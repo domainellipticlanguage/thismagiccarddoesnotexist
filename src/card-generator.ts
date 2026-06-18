@@ -189,7 +189,9 @@ function reserveArtUrls(cardData: CardData): { buffer: Buffer; key: string }[] {
 /** Copy typeLine and linkType from normalizedCardData onto the cardData. */
 function applyNormalizedFields(cardData: CardData, normalized: CardData): void {
   cardData.typeLine = normalized.typeLine;
-  cardData.linkType = normalized.linkType;
+  // linkType is intentionally NOT persisted — it's derived data that crucible
+  // re-infers at render time. We keep it on cardData only when the manual form
+  // sets it as an explicit layout override; otherwise it stays undefined ("Auto").
 }
 
 /** Result of phase 1 (LLM + art + render). Holds image buffers, not S3 URLs. */
