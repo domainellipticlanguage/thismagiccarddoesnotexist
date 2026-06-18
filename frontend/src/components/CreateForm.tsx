@@ -26,8 +26,6 @@ const IDEAS = [
   "A split card where one half counters a spell and the other half copies it",
   "A split card: one half a board wipe, the other half a card draw spell",
   "A fused split card where both halves resolve together, one milling and one reanimating",
-  "An aftermath card — first half is a burn spell, second half returns it from the graveyard",
-  "An aftermath card: removal up front, then a recursion follow-up from the graveyard",
   "A Saga about the rise and fall of an ancient empire, 4 chapters",
   "A Saga that culminates in transforming into a creature with abilities echoing the chapters",
   "A Class enchantment with three levels, gaining stronger abilities as you level up",
@@ -38,7 +36,6 @@ const IDEAS = [
   "A flip creature: a meek apprentice mage who flips into an archmage on heroic triggers",
   "A Room enchantment — two doors, each with its own mana cost and effect, with chaotic synergy between them",
   "A Room enchantment where Door 1 is a defensive ward and Door 2 is an offensive curse",
-  "A Prepare creature based on Harrow",
   "A sorcery with Prepare that destroys a creature",
   "A mutate creature with a strong on-mutate trigger that scales with how many times you've mutated",
 ];

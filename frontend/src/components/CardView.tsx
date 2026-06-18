@@ -51,11 +51,10 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
         )}
         <div className="flex gap-3 pt-2">
           {canEdit && (
-            <>
-              <Link to={`/card/${card.id}/edit`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Edit</Link>
-              <Link to={`/card/${card.id}/copy`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Copy & Remix</Link>
-            </>
+            <Link to={`/card/${card.id}/edit`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Edit</Link>
           )}
+          {/* Copy & Remix makes an independent new card, so it's open to anyone. */}
+          <Link to={`/card/${card.id}/copy`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Copy & Remix</Link>
           {canDelete && (
             <button onClick={handleDelete} className="px-4 py-2 bg-red-900/50 text-red-300 rounded-lg hover:bg-red-900/80 transition-colors text-sm">Delete</button>
           )}
