@@ -64,8 +64,12 @@ function publicCard<T extends { creatorId?: string }>(card: T): Omit<T, "creator
   return rest;
 }
 
+// Debug bypass for ownership checks. Deliberately LOCAL-ONLY: even with
+// IS_DEBUG=true, it never engages inside Lambda (LAMBDA_TASK_ROOT is set there),
+// so a stray flag in a deployed env can't silently make every card editable and
+// deletable by anyone. Same prod signal the cookie's `secure` flag keys off.
 function isDebug(): boolean {
-  return process.env.IS_DEBUG === "true";
+  return process.env.IS_DEBUG === "true" && !process.env.LAMBDA_TASK_ROOT;
 }
 
 // --- API Routes ---
