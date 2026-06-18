@@ -7,6 +7,7 @@
     "dev:api": "tsx watch server.ts",
     "dev:web": "npm run dev --prefix frontend",
     "link": "npm link mtg-crucible",
+    "crucible": "npm install mtg-crucible@latest && npm install mtg-crucible@latest --prefix frontend",
     "build": "cd frontend && npm run build",
     "deploy": "npm run build && npx sst deploy --stage production",
     "start": "node dist/server.js"
@@ -18,7 +19,7 @@
     "@hono/node-server": "^1.13.0",
     "dotenv": "^16.5.0",
     "hono": "^4.6.0",
-    "mtg-crucible": "^0.3.11",
+    "mtg-crucible": "^0.3.12",
     "openai": "^4.103.0",
     "replicate": "^1.0.1",
     "uuid": "^11.1.0"
