@@ -196,6 +196,21 @@ app.post("/api/cards", async (c) => {
   }
 
   const creatorId = getCreatorId(c);
+  const mode = body.mode || "create";
+
+  // An in-place AI edit supersedes the original card, so it requires ownership.
+  // (Copy creates an independent new card and doesn't touch the original, so
+  // it isn't gated — matching the manual edit path.) Checked before the stream
+  // starts so we can return a real 403 rather than a mid-stream error.
+  if (mode === "edit") {
+    if (!body.base) return c.json({ error: "base card id is required" }, 400);
+    const original = await getCard(body.base);
+    if (!original) return c.json({ error: "Card not found" }, 404);
+    if (!isDebug() && original.creatorId !== creatorId) {
+      return c.json({ error: "Not authorized" }, 403);
+    }
+  }
+
   // The Designer cookie (set by the manual form) is sent with every request;
   // apply it implicitly to AI-generated cards too. Edits inherit the card's
   // existing designer, so it only takes effect on create.
@@ -212,7 +227,7 @@ app.post("/api/cards", async (c) => {
         body.description,
         body.base,
         creatorId,
-        body.mode || "create",
+        mode,
         designerCookie,
       );
 
