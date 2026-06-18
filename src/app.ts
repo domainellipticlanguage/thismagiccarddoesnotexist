@@ -196,6 +196,10 @@ app.post("/api/cards", async (c) => {
   }
 
   const creatorId = getCreatorId(c);
+  // The Designer cookie (set by the manual form) is sent with every request;
+  // apply it implicitly to AI-generated cards too. Edits inherit the card's
+  // existing designer, so it only takes effect on create.
+  const designerCookie = getCookie(c, "designer") || undefined;
 
   // Stream the response so the client gets the rendered card as soon as
   // render completes — S3 upload + DDB write happen after the flush, while
@@ -209,6 +213,7 @@ app.post("/api/cards", async (c) => {
         body.base,
         creatorId,
         body.mode || "create",
+        designerCookie,
       );
 
       // Build the response card with data URLs so the client can render

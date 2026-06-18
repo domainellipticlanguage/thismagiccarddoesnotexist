@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import type { CardDocument, CardRecord, ArtDirective } from "./types.js";
 import type { CardData, RenderedCard } from "mtg-crucible";
 import { createCard as llmCreateCard } from "./llm-client.js";
-import { generateArt, editArt, ART_MODEL } from "./art-generator.js";
+import { generateArt, editArt, ART_CREDIT } from "./art-generator.js";
 import {
   getArtDimensions,
   normalizeCard,
@@ -18,15 +18,27 @@ import {
 } from "./card-table.js";
 import { uploadBuffer, getPublicUrl } from "./s3-storage.js";
 
-/** Credit shown as a card's designer when the creator leaves it blank. */
-export const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
+/** The site always gets designer credit; a user-supplied designer is prepended. */
+export const SITE_CREDIT = "thismagiccarddoesnotexist.com";
+const DESIGNER_SEPARATOR = " • ";
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Trailing site credit plus any whitespace/separator before it, so composition
+// can be made idempotent across repeated edits.
+const SITE_CREDIT_SUFFIX = new RegExp("[\\s•·|/\\u2013\\u2014-]*" + escapeRegExp(SITE_CREDIT) + "\\s*$", "i");
 
-/** Fall back to the site credit for any face missing an explicit designer. */
-function applyDesignerDefault(cardData: CardData): void {
-  if (!cardData.designer) cardData.designer = DEFAULT_DESIGNER;
-  if (cardData.linkedCard && !cardData.linkedCard.designer) {
-    cardData.linkedCard.designer = DEFAULT_DESIGNER;
-  }
+/** Compose the designer credit as "<user> • site", or just the site when no
+ *  user designer is given. Idempotent: strips an existing site credit first so
+ *  repeated edits don't stack it. */
+export function composeDesigner(raw: string | undefined): string {
+  const user = (raw ?? "").replace(SITE_CREDIT_SUFFIX, "").trim();
+  return user ? `${user}${DESIGNER_SEPARATOR}${SITE_CREDIT}` : SITE_CREDIT;
+}
+
+/** Apply the composed designer credit to every face (designer is card-level). */
+function applyDesignerCredit(cardData: CardData, raw: string | undefined): void {
+  const designer = composeDesigner(raw);
+  cardData.designer = designer;
+  if (cardData.linkedCard) cardData.linkedCard.designer = designer;
 }
 
 /** Layouts that render a single piece of art shared across both faces of a
@@ -245,6 +257,8 @@ export async function generateRenderedCard(
   originalCardId: string | undefined,
   creatorId: string,
   mode: "create" | "edit" | "copy",
+  // The creator's remembered Designer (from their cookie); used on create.
+  designerCookie?: string,
 ): Promise<GeneratedCard> {
   const cardId = uuid();
   console.log(`[Pipeline] start ${cardId} ${mode}`);
@@ -258,12 +272,12 @@ export async function generateRenderedCard(
   const llmResult = await llmCreateCard(description, originalCard?.cardData, mode);
 
   const cardData = llmResult.cardData;
-  cardData.artist = ART_MODEL;
-  cardData.designer = DEFAULT_DESIGNER;
-  if (cardData.linkedCard) {
-    cardData.linkedCard.artist = ART_MODEL;
-    cardData.linkedCard.designer = DEFAULT_DESIGNER;
-  }
+  cardData.artist = ART_CREDIT;
+  if (cardData.linkedCard) cardData.linkedCard.artist = ART_CREDIT;
+  // Designer is card-level: AI edits inherit the original card's designer
+  // (recomposed with the site credit); a fresh create falls back to the
+  // creator's remembered Designer cookie, then to just the site.
+  applyDesignerCredit(cardData, originalCard?.cardData?.designer ?? designerCookie);
   console.log(`[Pipeline] Card: ${cardData.name} | directives: ${llmResult.artDirectives.join(",")}`);
 
   // Layouts that share one art across two faces (rooms, flip): collapse the
@@ -313,9 +327,9 @@ export async function applyFieldEdits(
 ): Promise<CardRecord> {
   const cardId = uuid();
 
-  // Manual edits carry an explicit card-level Designer; fall back to the site
-  // credit when the field is left blank.
-  applyDesignerDefault(cardData);
+  // Manual edits carry the raw card-level Designer from the form; compose it
+  // with the site credit (or just the site when left blank).
+  applyDesignerCredit(cardData, cardData.designer);
 
   // The art description is the control: an empty one means "no art" (blank
   // frame). A non-empty description keeps the existing image, or regenerates it
@@ -343,10 +357,13 @@ export async function applyFieldEdits(
   console.log(`[Pipeline] field ${mode} ${cardId} (parent ${original.id})${regen ? " [art regen]" : ""}`);
 
   if (regen) {
-    // Clear artUrl on the faces being regenerated so the generator fills them;
-    // unchanged faces keep their inherited URL untouched.
+    // Clear artUrl on the faces being regenerated so the generator fills them
+    // (and stamp the AI artist credit); unchanged faces keep their inherited URL.
     faces.forEach((face, i) => {
-      if (face && directives[i] === "generate") face.artUrl = undefined;
+      if (face && directives[i] === "generate") {
+        face.artUrl = undefined;
+        face.artist = ART_CREDIT;
+      }
     });
     // Collapse shared-art layouts (room, flip) before generating, mirroring the
     // LLM create path.
@@ -390,7 +407,7 @@ export async function createManualCard(
   creatorId: string,
 ): Promise<CardRecord> {
   const cardId = uuid();
-  applyDesignerDefault(cardData);
+  applyDesignerCredit(cardData, cardData.designer);
   const norm = (s?: string) => (s ?? "").trim();
 
   const faces = [cardData, cardData.linkedCard];
@@ -400,7 +417,7 @@ export async function createManualCard(
       face.artUrl = undefined;
       return "keep_self";
     }
-    face.artist = ART_MODEL;
+    face.artist = ART_CREDIT;
     return "generate";
   });
 

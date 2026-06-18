@@ -4,6 +4,9 @@ const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
 export const ART_MODEL = "black-forest-labs/flux-2-klein-4b";
 
+/** Short artist credit shown on the card — the model name without the owner. */
+export const ART_CREDIT = ART_MODEL.split("/").pop()!; // "flux-2-klein-4b"
+
 /** Output resolution in megapixels. FLUX.2 klein accepts "0.25", "0.5", "1", "2", "4"
  *  and wants it as a string. */
 function getMegapixels(): string {

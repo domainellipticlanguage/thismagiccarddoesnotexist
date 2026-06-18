@@ -15,6 +15,14 @@ import { getCookie, setCookie } from "../lib/cookies";
 const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
 const DESIGNER_COOKIE = "designer";
 
+// The stored designer is "<user> • thismagiccarddoesnotexist.com" (the backend
+// composes it). Strip the trailing site credit so the field shows only the
+// user's part; the backend re-composes on save.
+function stripSiteCredit(designer: string | undefined): string {
+  const esc = DEFAULT_DESIGNER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (designer ?? "").replace(new RegExp("[\\s•·|/\\u2013\\u2014-]*" + esc + "\\s*$", "i"), "").trim();
+}
+
 // Layout dropdown selection: single-faced, infer-the-layout, or an explicit
 // layout override.
 type LayoutChoice = "none" | "auto" | LinkType;
@@ -342,8 +350,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
   const [designer, setDesigner] = useState<string>(() => {
     const saved = getCookie(DESIGNER_COOKIE);
     if (saved) return saved;
-    const existing = initialCardData.designer;
-    return existing && existing !== DEFAULT_DESIGNER ? existing : "";
+    return stripSiteCredit(initialCardData.designer);
   });
   // Card-level rarity (also drives the set-symbol color). Defaults to common.
   const [rarity, setRarity] = useState<Rarity>(initialCardData.rarity ?? "common");

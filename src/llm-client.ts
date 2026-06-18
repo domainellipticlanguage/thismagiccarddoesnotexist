@@ -263,6 +263,10 @@ Additionally, they sometimes have triggered abilities like \`When you unlock thi
 Kamigawa Flip is a 2-card mechanic, it's essentially exactly the same as transform. If a user asks for a "flip card" or "kamigawa flip card",
 be sure that the first card has an activated or triggered ability like "[some trigger] flip ~".
 
+## Aftermath
+Aftermath is a 2-card split spell: \`cards[0]\` is a normal instant/sorcery cast from hand; \`cards[1]\` is cast only from the graveyard, then exiled (it still has a mana cost). Aftermath is a keyword, NOT a subtype — don't put it in the type line. Make \`cards[1]\`'s first ability line exactly:
+\`Aftermath (Cast this spell only from your graveyard. Then exile it.)\`
+
 `;
 
 // ---------------------------------------------------------------------------
