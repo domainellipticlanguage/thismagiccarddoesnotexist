@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import {
   parseTypeLine,
   LINK_TYPES,
@@ -225,14 +225,9 @@ interface FaceFieldsProps {
   form: FaceFormState;
   onChange: (f: FaceFormState) => void;
   loading: boolean;
-  /** Gray out + disable the Art Description field (when "No artwork" is on). */
-  artDisabled?: boolean;
-  /** Optional node rendered directly above Art Description (the No-artwork
-   *  toggle, passed to the front face only). */
-  artToggle?: ReactNode;
 }
 
-function FaceFields({ form, onChange, loading, artDisabled, artToggle }: FaceFieldsProps) {
+function FaceFields({ form, onChange, loading }: FaceFieldsProps) {
   const setField = <K extends keyof FaceFormState>(key: K, value: FaceFormState[K]) =>
     onChange({ ...form, [key]: value });
 
@@ -304,11 +299,10 @@ function FaceFields({ form, onChange, loading, artDisabled, artToggle }: FaceFie
         <textarea className="input w-full resize-none" rows={2} value={form.flavorText} onChange={(e) => setField("flavorText", e.target.value)} placeholder="Italic flavor text..." disabled={loading} />
       </div>
 
-      {artToggle}
-
-      <div className={`transition-opacity ${artDisabled ? "opacity-40" : ""}`}>
+      <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Art Description</label>
-        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Describe the card art..." disabled={loading || artDisabled} />
+        <textarea className="input w-full resize-none" rows={2} value={form.artDescription} onChange={(e) => setField("artDescription", e.target.value)} placeholder="Prompt for AI image model" disabled={loading} />
+        <p className="mt-1 text-xs text-neutral-500">Leave blank to render the card with an empty art box.</p>
       </div>
     </div>
   );
@@ -320,7 +314,7 @@ function FaceFields({ form, onChange, loading, artDisabled, artToggle }: FaceFie
 
 interface CardEditFormProps {
   initialCardData: CardData;
-  onSave: (cardData: CardData, noArt: boolean) => void;
+  onSave: (cardData: CardData) => void;
   loading: boolean;
   submitLabel?: string;
   /** Always render the in-form submit button (the create flow has no sticky
@@ -343,9 +337,6 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
     const existing = initialCardData.designer;
     return existing && existing !== DEFAULT_DESIGNER ? existing : "";
   });
-  // Whether to generate artwork. Off renders an empty/black art frame. Inverted
-  // at submit into the noArt flag the API expects.
-  const [generateArt, setGenerateArt] = useState(true);
   // Card-level rarity (also drives the set-symbol color). Defaults to common.
   const [rarity, setRarity] = useState<Rarity>(initialCardData.rarity ?? "common");
 
@@ -377,27 +368,12 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
     if (loading) return;
     // Remember the designer name so the next card pre-fills it.
     if (designer.trim()) setCookie(DESIGNER_COOKIE, designer.trim());
-    onSave(cardData, !generateArt);
+    onSave(cardData);
   };
 
   return (
     <form id="manual-edit-form" onSubmit={handleSubmit} className="space-y-6">
-      <FaceFields
-        form={front}
-        onChange={setFront}
-        loading={loading}
-        artDisabled={!generateArt}
-        artToggle={
-          <label className="flex items-center gap-3 text-sm text-neutral-300 select-none cursor-pointer">
-            <input type="checkbox" checked={generateArt} onChange={(e) => setGenerateArt(e.target.checked)} disabled={loading} className="sr-only peer" />
-            <span className="relative shrink-0 w-11 h-6 rounded-full bg-neutral-700 transition-colors peer-checked:bg-gold-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gold-500/50 peer-disabled:opacity-50 after:content-[''] after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
-            <span>
-              Generate artwork
-              <span className="block text-xs text-neutral-500">Off renders the card with an empty art box.</span>
-            </span>
-          </label>
-        }
-      />
+      <FaceFields form={front} onChange={setFront} loading={loading} />
 
       <div>
         <label className="block text-sm font-medium text-neutral-300 mb-1">Rarity</label>
@@ -431,7 +407,7 @@ export function CardEditForm({ initialCardData, onSave, loading, submitLabel = "
       {linkType && (
         <fieldset className="border border-neutral-800 rounded-lg p-4 space-y-4">
           <legend className="px-2 text-sm font-medium text-neutral-400">Back Face</legend>
-          <FaceFields form={back} onChange={setBack} loading={loading} artDisabled={!generateArt} />
+          <FaceFields form={back} onChange={setBack} loading={loading} />
         </fieldset>
       )}
 

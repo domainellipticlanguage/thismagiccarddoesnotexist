@@ -75,11 +75,11 @@ export function EditPage({ mode: propMode }: { mode?: "edit" | "copy" }) {
     } finally { setSaving(false); }
   }
 
-  async function handleManualSave(cardData: CardData, noArt: boolean) {
+  async function handleManualSave(cardData: CardData) {
     if (!currentId) return;
     setSaving(true); setError(null);
     try {
-      const newId = await editCardFields(currentId, cardData, mode, noArt);
+      const newId = await editCardFields(currentId, cardData, mode);
       if (mode === "copy") {
         // Copy creates a separate card; land on its edit page so the user can
         // keep iterating on the remix (mirrors the AI remix flow). Keep the

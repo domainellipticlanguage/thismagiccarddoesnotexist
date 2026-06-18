@@ -100,9 +100,9 @@ app.delete("/api/cards/:id", async (c) => {
 });
 
 app.post("/api/cards/:id/edit", async (c) => {
-  let body: { cardData?: CardData; mode?: "edit" | "copy"; noArt?: boolean };
+  let body: { cardData?: CardData; mode?: "edit" | "copy" };
   try {
-    body = (await c.req.json()) as { cardData?: CardData; mode?: "edit" | "copy"; noArt?: boolean };
+    body = (await c.req.json()) as { cardData?: CardData; mode?: "edit" | "copy" };
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
@@ -122,7 +122,7 @@ app.post("/api/cards/:id/edit", async (c) => {
       return c.json({ error: "Not authorized" }, 403);
     }
 
-    const newCard = await applyFieldEdits(body.cardData, original, creatorId, mode, body.noArt === true);
+    const newCard = await applyFieldEdits(body.cardData, original, creatorId, mode);
     return c.json({ card_id: newCard.id });
   } catch (err: any) {
     console.error("[API] POST edit error:", err);
@@ -166,9 +166,9 @@ app.post("/api/cards/:id/bug", async (c) => {
 
 // Manual create: build a brand-new card from form fields with no LLM.
 app.post("/api/cards/manual", async (c) => {
-  let body: { cardData?: CardData; noArt?: boolean };
+  let body: { cardData?: CardData };
   try {
-    body = (await c.req.json()) as { cardData?: CardData; noArt?: boolean };
+    body = (await c.req.json()) as { cardData?: CardData };
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
@@ -176,7 +176,7 @@ app.post("/api/cards/manual", async (c) => {
 
   try {
     const creatorId = getCreatorId(c);
-    const newCard = await createManualCard(body.cardData, creatorId, body.noArt === true);
+    const newCard = await createManualCard(body.cardData, creatorId);
     return c.json({ card_id: newCard.id });
   } catch (err: any) {
     console.error("[API] POST manual create error:", err);

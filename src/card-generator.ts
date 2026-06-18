@@ -308,9 +308,6 @@ export async function applyFieldEdits(
   // "edit" supersedes the original (it leaves the gallery); "copy" leaves the
   // original untouched and persists an independent new card (Copy & Remix).
   mode: "edit" | "copy" = "edit",
-  // "No art": render an empty frame (black box) instead of generating/keeping
-  // any artwork. Manual mode only.
-  noArt = false,
 ): Promise<CardRecord> {
   const cardId = uuid();
 
@@ -318,31 +315,24 @@ export async function applyFieldEdits(
   // credit when the field is left blank.
   applyDesignerDefault(cardData);
 
-  // The form preserves artUrl from the original (it only edits text fields), so
-  // by default every face keeps its existing art. Compare each face's new
-  // artDescription against the original: if it changed, regenerate that face's
-  // art from the new description; otherwise inherit the original art.
+  // The art description is the control: an empty one means "no art" (blank
+  // frame). A non-empty description keeps the existing image, or regenerates it
+  // when the description changed or the face currently has no art. The form
+  // preserves artUrl from the original (it only edits text fields).
   const faces = [cardData, cardData.linkedCard];
   const origFaces = [original.cardData, original.cardData.linkedCard];
   const norm = (s?: string) => (s ?? "").trim();
 
   const directives: ArtDirective[] = faces.map((face, i) => {
     if (!face) return "keep_self";
-    // "No art": drop any art and neither inherit nor generate. A null artUrl
-    // tells the renderer to leave the frame blank.
-    if (noArt) {
-      face.artUrl = undefined;
-      return "keep_self";
-    }
-    // Inherit the original art so unchanged faces render with it.
+    // No description = no art; cleared after generation (see below).
+    if (!norm(face.artDescription)) return "keep_self";
+    // Inherit the original art so an unchanged face keeps its image.
     if (!face.artUrl && typeof origFaces[i]?.artUrl === "string") {
       face.artUrl = origFaces[i]!.artUrl;
     }
-    // Nothing to generate from without a description.
-    if (!norm(face.artDescription)) return "keep_self";
     // Generate when the description changed, OR when the face still has no art
-    // (e.g. re-enabling art after a no-art render left it blank) — there a
-    // matching description must not block regeneration.
+    // (e.g. art was previously blank) — a matching description must not block it.
     const changed = norm(face.artDescription) !== norm(origFaces[i]?.artDescription);
     return changed || !face.artUrl ? "generate" : "keep_self";
   });
@@ -361,6 +351,13 @@ export async function applyFieldEdits(
     combineSharedArtDescriptions(cardData);
     await generateArtForAllFaces(cardData, directives, original);
   }
+
+  // Faces with no description render blank. Clear any art still attached —
+  // whether the form sent the inherited URL, or generateArtForAllFaces
+  // re-inherited it via keep_self while another face was regenerating.
+  faces.forEach((face) => {
+    if (face && !norm(face.artDescription)) face.artUrl = undefined;
+  });
 
   const [rendered, thumbnail] = await Promise.all([
     renderCardOnly(cardData),
@@ -384,12 +381,11 @@ export async function applyFieldEdits(
 }
 
 /** Manual create: build a brand-new card from form `cardData` with no LLM and
- *  no parent. Art is generated from each face's artDescription; faces with an
- *  empty description (or when `noArt` is set) render an empty/black frame. */
+ *  no parent. Art is generated from each face's artDescription; a face with an
+ *  empty description renders an empty/black frame. */
 export async function createManualCard(
   cardData: CardData,
   creatorId: string,
-  noArt = false,
 ): Promise<CardRecord> {
   const cardId = uuid();
   applyDesignerDefault(cardData);
@@ -398,7 +394,7 @@ export async function createManualCard(
   const faces = [cardData, cardData.linkedCard];
   const directives: ArtDirective[] = faces.map((face) => {
     if (!face) return "keep_self";
-    if (noArt || !norm(face.artDescription)) {
+    if (!norm(face.artDescription)) {
       face.artUrl = undefined;
       return "keep_self";
     }
@@ -407,7 +403,7 @@ export async function createManualCard(
   });
 
   const regen = directives.some((d) => d === "generate");
-  console.log(`[Pipeline] manual create ${cardId}${noArt ? " [no art]" : ""}`);
+  console.log(`[Pipeline] manual create ${cardId}`);
 
   if (regen) {
     combineSharedArtDescriptions(cardData);

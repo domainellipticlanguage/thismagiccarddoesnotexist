@@ -55,13 +55,12 @@ export async function reportBug(id: string, text: string): Promise<BugReport> {
 export async function editCardFields(
   id: string,
   cardData: CardData,
-  mode: "edit" | "copy" = "edit",
-  noArt = false
+  mode: "edit" | "copy" = "edit"
 ): Promise<string> {
   const response = await fetch(`${API_BASE}/cards/${id}/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cardData, mode, noArt }),
+    body: JSON.stringify({ cardData, mode }),
   });
   if (!response.ok) {
     const error = await response.json();
@@ -71,12 +70,12 @@ export async function editCardFields(
 }
 
 /** Manual create: persist a brand-new card from form fields (no LLM). Returns
- *  the new card id. `noArt` renders an empty/black art frame. */
-export async function createManualCard(cardData: CardData, noArt = false): Promise<string> {
+ *  the new card id. A face with an empty art description renders an empty box. */
+export async function createManualCard(cardData: CardData): Promise<string> {
   const response = await fetch(`${API_BASE}/cards/manual`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cardData, noArt }),
+    body: JSON.stringify({ cardData }),
   });
   if (!response.ok) {
     const error = await response.json();

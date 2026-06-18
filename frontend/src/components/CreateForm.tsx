@@ -48,15 +48,11 @@ export function CreateForm({
   loading,
   submitLabel = "Create Card",
   showSuggest = true,
-  onManual,
 }: {
   onSubmit: (desc: string) => void | Promise<void>;
   loading: boolean;
   submitLabel?: string;
   showSuggest?: boolean;
-  /** When provided, render a "Manual Create" button that switches to the
-   *  field-by-field form instead of generating from a description. */
-  onManual?: () => void;
 }) {
   const [description, setDescription] = useState("");
 
@@ -94,11 +90,6 @@ export function CreateForm({
         {showSuggest && (
           <button type="button" onClick={() => setDescription(IDEAS[Math.floor(Math.random() * IDEAS.length)])} disabled={loading} className="px-4 py-2.5 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 transition-colors text-sm">
             Suggest an idea
-          </button>
-        )}
-        {onManual && (
-          <button type="button" onClick={onManual} disabled={loading} className="px-4 py-2.5 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 transition-colors text-sm">
-            Manual Create
           </button>
         )}
       </div>
