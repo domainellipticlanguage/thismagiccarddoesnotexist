@@ -194,29 +194,36 @@ function applyNormalizedFields(cardData: CardData, normalized: CardData): void {
   // sets it as an explicit layout override; otherwise it stays undefined ("Auto").
 }
 
+/** A mana cost from which the card's color can be read — i.e. it contains at
+ *  least one colored pip. A colorless-looking cost ({0}, {2}, {X}, {C}, …)
+ *  conveys no color, so an indicator on such a face still carries information. */
+const COST_HAS_COLOR = /[WUBRG]/i;
+
 /** Drop colorIndicators that carry no information. A colorIndicator only matters
- *  on a face whose color can't be derived from a mana cost; if a face HAS a mana
- *  cost, its colors come from that cost and any colorIndicator is redundant, so
- *  strip it. Kamigawa flip backs are the exception that proves the rule: they
- *  have no mana cost of their own yet still inherit the front face's colors, so
- *  they must never carry an indicator either. Applied to every face on every
- *  pipeline (LLM create/edit, manual create, field edits) before rendering. */
+ *  on a face whose color can't be derived from its mana cost; if the cost already
+ *  contains a colored pip, the indicator is redundant, so strip it. Kamigawa flip
+ *  backs are the exception that proves the rule: no mana cost of their own, yet
+ *  they inherit the front face's colors, so they never carry an indicator either.
+ *
+ *  AI output only — manual create/edits are intentionally left untouched so a
+ *  deliberately-set indicator survives. (A later AI edit may still strip it;
+ *  that edge case isn't worth special-casing.) */
 function stripRedundantColorIndicators(cardData: CardData): void {
   for (const face of [cardData, cardData.linkedCard]) {
-    if (face?.manaCost && face.colorIndicator) face.colorIndicator = undefined;
+    if (face?.colorIndicator && face.manaCost && COST_HAS_COLOR.test(face.manaCost)) {
+      face.colorIndicator = undefined;
+    }
   }
   if (cardData.linkedCard && normalizeCard(cardData).linkType === "flip") {
     cardData.linkedCard.colorIndicator = undefined;
   }
 }
 
-/** Final pre-persist normalization + render. Every pipeline (LLM create/edit,
- *  manual create, field edits) funnels through here: strip redundant data, then
- *  produce the full render and the low-q gallery thumbnail in parallel. Both run
- *  while artUrls are still Buffers (before reserveArtUrls swaps them for the
- *  not-yet-uploaded S3 URLs). */
+/** Final pre-persist render. Every pipeline (LLM create/edit, manual create,
+ *  field edits) funnels through here: produce the full render and the low-q
+ *  gallery thumbnail in parallel. Both run while artUrls are still Buffers
+ *  (before reserveArtUrls swaps them for the not-yet-uploaded S3 URLs). */
 async function renderFullAndThumbnail(cardData: CardData): Promise<[RenderedCard, RenderedCard]> {
-  stripRedundantColorIndicators(cardData);
   return Promise.all([renderCardOnly(cardData), renderThumbnailOnly(cardData)]);
 }
 
@@ -300,6 +307,10 @@ export async function generateRenderedCard(
   combineSharedArtDescriptions(cardData);
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
+
+  // AI-output normalization: drop colorIndicators the model emitted on faces
+  // whose color is already implied by the mana cost. Manual pipelines skip this.
+  stripRedundantColorIndicators(cardData);
 
   const [rendered, thumbnail] = await renderFullAndThumbnail(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
