@@ -15,9 +15,9 @@ import { getCookie, setCookie } from "../lib/cookies";
 const DEFAULT_DESIGNER = "thismagiccarddoesnotexist.com";
 const DESIGNER_COOKIE = "designer";
 
-// The stored designer is "<user> • thismagiccarddoesnotexist.com" (the backend
-// composes it). Strip the trailing site credit so the field shows only the
-// user's part; the backend re-composes on save.
+// The stored designer is just the user's part — the site credit is implied and
+// appended only on the rendered image, never stored. This strip is defensive for
+// legacy records that persisted the composed "<user> • site" string.
 function stripSiteCredit(designer: string | undefined): string {
   const esc = DEFAULT_DESIGNER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return (designer ?? "").replace(new RegExp("[\\s•·|/\\u2013\\u2014-]*" + esc + "\\s*$", "i"), "").trim();

@@ -13,9 +13,31 @@ import type {
 } from "mtg-crucible";
 import { v4 as uuid } from "uuid";
 import { uploadBuffer } from "./s3-storage.js";
+import { composeDesigner } from "./designer-credit.js";
 
 export { parseCard, formatCard, getArtDimensions, normalizeCard, toDisplayCard };
 export type { CardData, RenderedCard, MtgCardDisplayData };
+
+/** A throwaway copy of the card with the site credit appended to the designer,
+ *  for the IMAGE only. The stored card keeps the bare designer. designer is a
+ *  card-level field, so it's stamped on both faces. */
+function withSiteCredit(cardData: CardData): CardData {
+  const designer = composeDesigner(cardData.designer);
+  const credited: CardData = { ...cardData, designer };
+  if (cardData.linkedCard) credited.linkedCard = { ...cardData.linkedCard, designer };
+  return credited;
+}
+
+/** Render `cardData` to image buffers with the implied site credit on the image,
+ *  but keep `crucibleText` (the only text output carrying the designer) bare —
+ *  so the site credit never lands in the stored record or the card text. */
+async function renderWithCredit(
+  cardData: CardData,
+  quality: "medium" | "low",
+): Promise<RenderedCard> {
+  const rendered = await renderCard(withSiteCredit(cardData), { quality, format: "webp" });
+  return { ...rendered, crucibleText: formatCard(cardData) };
+}
 
 export function getArtDimensionsFromText(crucibleText: string): {
   width: number;
@@ -31,7 +53,7 @@ export function getArtDimensionsFromText(crucibleText: string): {
 export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> {
   console.log(`[Render] Rendering: ${cardData.name || "Untitled"}`);
   const start = Date.now();
-  const rendered = await renderCard(cardData, { quality: "medium", format: "webp" });
+  const rendered = await renderWithCredit(cardData, "medium");
   console.log(`[Render] Done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
   return rendered;
 }
@@ -39,7 +61,7 @@ export async function renderCardOnly(cardData: CardData): Promise<RenderedCard> 
 /** Render a low-quality webp thumbnail (front + optional back) for the gallery. */
 export async function renderThumbnailOnly(cardData: CardData): Promise<RenderedCard> {
   const start = Date.now();
-  const rendered = await renderCard(cardData, { quality: "low", format: "webp" });
+  const rendered = await renderWithCredit(cardData, "low");
   console.log(`[Render] Thumbnail done in ${((Date.now() - start) / 1000).toFixed(2)}s`);
   return rendered;
 }
