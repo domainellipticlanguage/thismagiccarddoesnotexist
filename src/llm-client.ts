@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { formatTypeLine, formatAbilities, normalizeCard } from "mtg-crucible";
+import { formatTypeLine, formatAbilities } from "mtg-crucible";
 import type { CardData, Rarity, Color } from "mtg-crucible";
 import type { LLMCardResponse, ArtDirective } from "./types.js";
 
@@ -358,14 +358,8 @@ function parseArgs(args: any): LLMCallResult["response"] {
   if (!cards?.length || !cards[0]?.name) throw new Error("Missing primary card in tool call");
   const [primary, secondary] = cards;
   const cardData = llmCardToCardData(primary, secondary);
-
-  // Flip cards (Kamigawa-style) share the front face's colors — the back face
-  // never carries its own color indicator. The prompt asks for colorIndicator=""
-  // on the flip side, but models don't always comply, so strip it here. linkType
-  // is inferred rather than emitted, so normalize to read it.
-  if (cardData.linkedCard && normalizeCard(cardData).linkType === "flip") {
-    cardData.linkedCard.colorIndicator = undefined;
-  }
+  // Redundant colorIndicators (incl. the Kamigawa flip back case that used to be
+  // handled here) are stripped generally before rendering in card-generator.
 
   const artDirectives: ArtDirective[] = [primary.artDirective];
   if (secondary?.artDirective) artDirectives.push(secondary.artDirective);

@@ -194,6 +194,22 @@ function applyNormalizedFields(cardData: CardData, normalized: CardData): void {
   // sets it as an explicit layout override; otherwise it stays undefined ("Auto").
 }
 
+/** Drop colorIndicators that carry no information. A colorIndicator only matters
+ *  on a face whose color can't be derived from a mana cost; if a face HAS a mana
+ *  cost, its colors come from that cost and any colorIndicator is redundant, so
+ *  strip it. Kamigawa flip backs are the exception that proves the rule: they
+ *  have no mana cost of their own yet still inherit the front face's colors, so
+ *  they must never carry an indicator either. Applied to every face on every
+ *  pipeline (LLM create/edit, manual create, field edits) before rendering. */
+function stripRedundantColorIndicators(cardData: CardData): void {
+  for (const face of [cardData, cardData.linkedCard]) {
+    if (face?.manaCost && face.colorIndicator) face.colorIndicator = undefined;
+  }
+  if (cardData.linkedCard && normalizeCard(cardData).linkType === "flip") {
+    cardData.linkedCard.colorIndicator = undefined;
+  }
+}
+
 /** Result of phase 1 (LLM + art + render). Holds image buffers, not S3 URLs. */
 export interface GeneratedCard {
   cardId: string;
@@ -274,6 +290,8 @@ export async function generateRenderedCard(
   combineSharedArtDescriptions(cardData);
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
+
+  stripRedundantColorIndicators(cardData);
 
   // Full render + low-q thumbnail in parallel, both while artUrls are still
   // Buffers (before reserveArtUrls swaps them for not-yet-uploaded S3 URLs).
@@ -366,6 +384,8 @@ export async function applyFieldEdits(
     if (face && !norm(face.artDescription)) face.artUrl = undefined;
   });
 
+  stripRedundantColorIndicators(cardData);
+
   const [rendered, thumbnail] = await Promise.all([
     renderCardOnly(cardData),
     renderThumbnailOnly(cardData),
@@ -416,6 +436,8 @@ export async function createManualCard(
     combineSharedArtDescriptions(cardData);
     await generateArtForAllFaces(cardData, directives, undefined);
   }
+
+  stripRedundantColorIndicators(cardData);
 
   const [rendered, thumbnail] = await Promise.all([
     renderCardOnly(cardData),
