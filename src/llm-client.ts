@@ -238,13 +238,16 @@ Make sure the power of the effect is appropriate for the card's rarity and cost.
 
 ## New mechanic: Prepared
 Prepared is a 2-card mechanic. Like Adventure, a permanent card has a paired instant or sorcery in \`cards[1]\`. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared.
-Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the original mana cost. So don't invent a new spell for the prepared spell unless the user requests it.
+Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the *original mana cost* (it's not a free spell). So use an existing instant or sorcery for the prepared spell, unless the user requests a custom one.
 
-When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Example:
-\`Whenever you cast a creature spell, ~ becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
-The parenthesized text must be copied verbatim.
+When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Examples:
+\`Whenever this creature deals combat damage to a player, it becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
+\`This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
+The parenthesized text can be omitted if there is not enough space, but otherwise must be copied verbatim.
 
-Prepared is NOT a keyword or subtype. Don't write "prepared" as a flavor word for unrelated state changes — pick a different word (readied, focused, aimed). Only use the Prepared mechanic when you produce a 2-card structure with the spell half in \`cards[1]\`.
+Casting the prepared spell should not trigger the ability that prepares the creature (otherwise that's a trivial infinite loop).
+
+Prepared is NOT a keyword or subtype. Only use the Prepared mechanic when you produce a 2-card structure with the spell half in \`cards[1]\`.
 
 ## New mechanic: Omen
 Omen is a 2-card mechanic. Similar to Adventure, a permanent can have an instant or sorcery as a secondary card. (So far, Omen has only ever appeared when the permanent card is a dragon creature). Omen is a subtype of Instant or Sorcery. The Omen spell causes the whole card to get shuffled into the library.
