@@ -28,15 +28,23 @@ function withSiteCredit(cardData: CardData): CardData {
   return credited;
 }
 
+/** crucibleText is shown to users (the "Card Text" box) and is purely a display
+ *  representation — the renderer works off cardData/artUrl, never this. Drop the
+ *  `Art URL: <s3 url>` line(s) formatCard emits so we never surface internal
+ *  asset URLs. (One line per face, hence the multiline/global match.) */
+export function stripArtUrl(crucibleText: string): string {
+  return crucibleText.replace(/^Art URL:.*\n?/gim, "");
+}
+
 /** Render `cardData` to image buffers with the implied site credit on the image,
- *  but keep `crucibleText` (the only text output carrying the designer) bare —
- *  so the site credit never lands in the stored record or the card text. */
+ *  but keep `crucibleText` bare: the only text output carrying the designer, and
+ *  also where formatCard would otherwise expose the art URL. */
 async function renderWithCredit(
   cardData: CardData,
   quality: "medium" | "low",
 ): Promise<RenderedCard> {
   const rendered = await renderCard(withSiteCredit(cardData), { quality, format: "webp" });
-  return { ...rendered, crucibleText: formatCard(cardData) };
+  return { ...rendered, crucibleText: stripArtUrl(formatCard(cardData)) };
 }
 
 export function getArtDimensionsFromText(crucibleText: string): {

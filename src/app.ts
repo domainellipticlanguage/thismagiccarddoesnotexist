@@ -19,7 +19,7 @@ import {
   applyFieldEdits,
   createManualCard,
 } from "./card-generator.js";
-import { buildDisplay } from "./card-renderer.js";
+import { buildDisplay, stripArtUrl } from "./card-renderer.js";
 import type {
   CreateCardRequest,
   CardResponse,
@@ -100,6 +100,9 @@ app.get("/api/cards/:id", async (c) => {
     const creatorId = getCreatorId(c);
     const canEdit = isDebug() || card.creatorId === creatorId;
 
+    // Older records baked the S3 art URL into crucibleText; strip it on read so
+    // the Card Text box never shows it (new renders are already stripped).
+    card.crucibleText = stripArtUrl(card.crucibleText);
     card.display = buildDisplay(card);
 
     const response: CardResponse = { card: publicCard(card), canEdit, canDelete: canEdit };
