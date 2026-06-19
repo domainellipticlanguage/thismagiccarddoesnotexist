@@ -233,10 +233,8 @@ Make sure the power of the effect is appropriate for the card's rarity and cost.
 - typeLine is the FULL line: "Legendary Creature — Human Wizard".
 - abilities: one ability per line, separated by real newline characters in the JSON string (not the literal characters backslash-n). Planeswalkers: "+N: text" / "-N: text". Sagas: "I — text", "II,IV — text".
 - In abilities, refer to the card by its full name OR \`~\`
-- Transform back faces: \`manaCost: ""\` and colorIndicator is set (e.g. "G", "UB").
-- Battle — Siege is a 2-card structure. Card 1: typeLine "Battle — Siege", \`battleDefense\` set. The first ability line is reminder text "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it’s defeated, exile it, then cast it transformed.)". Card 2: the post-defeat permanent (creature, enchantment, etc.), \`manaCost: ""\`, colorIndicator set.
 
-## New mechanic: Prepared
+## Prepared
 Prepared is a 2-card mechanic. Like Adventure, a permanent card has a paired instant or sorcery in \`cards[1]\`. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared.
 Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the *original mana cost* (it's not a free spell). So use an existing instant or sorcery for the prepared spell, unless the user requests a custom one.
 
@@ -249,26 +247,15 @@ Casting the prepared spell should not trigger the ability that prepares the crea
 
 Prepared is NOT a keyword or subtype. Only use the Prepared mechanic when you produce a 2-card structure with the spell half in \`cards[1]\`.
 
-## New mechanic: Omen
-Omen is a 2-card mechanic. Similar to Adventure, a permanent can have an instant or sorcery as a secondary card. (So far, Omen has only ever appeared when the permanent card is a dragon creature). Omen is a subtype of Instant or Sorcery. The Omen spell causes the whole card to get shuffled into the library.
-Include the reminder text inline, parenthesized, on the same line as the Omen spell ability. Example: 
-\`Gain 3 life. (Then shuffle this card into its owner's library.)\`
+## Other multi-face cards
+These each emit TWO items in \`cards\` (every face keeps its OWN name). Shared rule: put the mechanic's reminder text inline, parenthesized, on the ability line it applies to — that reminder text defines how the mechanic works, so you rarely need more than it plus the correct two-face split.
 
-## New mechanic: Room
-Room  is a 2-card mechanic, where each side gets its own name, mana cost, and abilities. Example: "Bottomless Pool {U} // Locker Room {4}{U}"
-Room is a subtype of Enchantment i.e. typeLine must be "Enchantment — Room". How it works is: 
-You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.
-The unlocking mechanic is implicit, so abilities DO NOT say "While this door is unlocked, ..."
-They usually have regular static abilities like normal enchantments, which are only active when that half of the room is unlocked.
-Additionally, they sometimes have triggered abilities like \`When you unlock this door, ...\`.
-
-## Kamigawa Flip
-Kamigawa Flip is a 2-card mechanic, it's essentially exactly the same as transform. If a user asks for a "flip card" or "kamigawa flip card",
-be sure that the first card has an activated or triggered ability like "[some trigger] flip ~".
-
-## Aftermath
-Aftermath is a 2-card split spell: \`cards[0]\` is a normal instant/sorcery cast from hand; \`cards[1]\` is cast only from the graveyard, then exiled (it still has a mana cost). Aftermath is a keyword, NOT a subtype — don't put it in the type line. Make \`cards[1]\`'s first ability line exactly:
-\`Aftermath (Cast this spell only from your graveyard. Then exile it.)\`
+- **Aftermath** — split spell. \`cards[0]\`: a normal instant/sorcery cast from hand. \`cards[1]\`: cast only from the graveyard, then exiled, and it still has its own mana cost. Aftermath is a keyword, NOT a subtype — keep it off the type line. Make \`cards[1]\`'s first ability line exactly: \`Aftermath (Cast this spell only from your graveyard. Then exile it.)\`
+- **Omen** — like Adventure: \`cards[0]\` is a permanent (canonically a Dragon) and \`cards[1]\` is an instant/sorcery with subtype Omen that you cast from hand; afterward the whole card is shuffled into its owner's library (instead of being exiled). Reminder on the Omen's effect line, e.g.: \`Gain 3 life. (Then shuffle this card into its owner's library.)\`
+- **Room** — both faces are \`Enchantment — Room\`, each with its own name and mana cost (e.g. "Bottomless Pool {U} // Locker Room {4}{U}"). You may cast either half to unlock that door; as a sorcery you may also pay a locked door's mana cost to unlock it later. Unlocking is implicit — do NOT write "While this door is unlocked, ...". A door's abilities (usually normal static abilities, sometimes \`When you unlock this door, ...\` triggers) are active only while that half is unlocked.
+- **Kamigawa Flip** — mechanically identical to transform. \`cards[0]\` must have an activated or triggered ability like "[some trigger] flip ~".
+- **Battle — Siege** — \`cards[0]\`: typeLine "Battle — Siege", \`battleDefense\` set; first ability line is the reminder \`(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.)\`. \`cards[1]\`: the post-defeat permanent (creature, enchantment, etc.), \`manaCost: ""\`, colorIndicator set.
+- **Transform back face** — \`manaCost: ""\`, colorIndicator set (e.g. "G", "UB").
 
 `;
 
