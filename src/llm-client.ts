@@ -235,8 +235,7 @@ Make sure the power of the effect is appropriate for the card's rarity and cost.
 - In abilities, refer to the card by its full name OR \`~\`
 
 ## Prepared
-Prepared is a 2-card mechanic. Like Adventure, a permanent card has a paired instant or sorcery in \`cards[1]\`. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared.
-Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the *original mana cost* (it's not a free spell). So use an existing instant or sorcery for the prepared spell, unless the user requests a custom one.
+Prepared is a 2-card mechanic. Like Adventure, \`cards[0]\` is a permanent card and \`cards[1]\` is an instant or sorcery. The permanent becomes prepared (usually via a triggered ability on it), the attached spell can be cast as a copy, and the permanent becomes unprepared. The prepared spell is self-contained and cannot reference the permanent card. Canonically, the prepare spell is a previously printed instant or sorcery spell, complete with the *original mana cost* (it's not a free spell). So use an existing instant or sorcery for the prepared spell, unless the user requests a custom one.
 
 When writing an ability that sets the prepared state, include the reminder text inline, parenthesized, on the same line. Examples:
 \`Whenever this creature deals combat damage to a player, it becomes prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\`
@@ -245,7 +244,7 @@ The parenthesized text can be omitted if there is not enough space, but otherwis
 
 Casting the prepared spell should not trigger the ability that prepares the creature (otherwise that's a trivial infinite loop).
 
-Prepared is NOT a keyword or subtype. Only use the Prepared mechanic when you produce a 2-card structure with the spell half in \`cards[1]\`.
+Prepared is NOT a keyword or subtype.
 
 ## Other multi-face cards
 These each emit TWO items in \`cards\` (every face keeps its OWN name). Shared rule: put the mechanic's reminder text inline, parenthesized, on the ability line it applies to — that reminder text defines how the mechanic works, so you rarely need more than it plus the correct two-face split.
