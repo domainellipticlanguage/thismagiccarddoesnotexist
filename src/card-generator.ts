@@ -210,6 +210,16 @@ function stripRedundantColorIndicators(cardData: CardData): void {
   }
 }
 
+/** Final pre-persist normalization + render. Every pipeline (LLM create/edit,
+ *  manual create, field edits) funnels through here: strip redundant data, then
+ *  produce the full render and the low-q gallery thumbnail in parallel. Both run
+ *  while artUrls are still Buffers (before reserveArtUrls swaps them for the
+ *  not-yet-uploaded S3 URLs). */
+async function renderFullAndThumbnail(cardData: CardData): Promise<[RenderedCard, RenderedCard]> {
+  stripRedundantColorIndicators(cardData);
+  return Promise.all([renderCardOnly(cardData), renderThumbnailOnly(cardData)]);
+}
+
 /** Result of phase 1 (LLM + art + render). Holds image buffers, not S3 URLs. */
 export interface GeneratedCard {
   cardId: string;
@@ -291,14 +301,7 @@ export async function generateRenderedCard(
 
   await generateArtForAllFaces(cardData, llmResult.artDirectives, originalCard);
 
-  stripRedundantColorIndicators(cardData);
-
-  // Full render + low-q thumbnail in parallel, both while artUrls are still
-  // Buffers (before reserveArtUrls swaps them for not-yet-uploaded S3 URLs).
-  const [rendered, thumbnail] = await Promise.all([
-    renderCardOnly(cardData),
-    renderThumbnailOnly(cardData),
-  ]);
+  const [rendered, thumbnail] = await renderFullAndThumbnail(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
 
   // Renderer is done with the Buffer artUrls; swap each Buffer for its
@@ -384,12 +387,7 @@ export async function applyFieldEdits(
     if (face && !norm(face.artDescription)) face.artUrl = undefined;
   });
 
-  stripRedundantColorIndicators(cardData);
-
-  const [rendered, thumbnail] = await Promise.all([
-    renderCardOnly(cardData),
-    renderThumbnailOnly(cardData),
-  ]);
+  const [rendered, thumbnail] = await renderFullAndThumbnail(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
   const pendingArtUploads = reserveArtUrls(cardData);
 
@@ -437,12 +435,7 @@ export async function createManualCard(
     await generateArtForAllFaces(cardData, directives, undefined);
   }
 
-  stripRedundantColorIndicators(cardData);
-
-  const [rendered, thumbnail] = await Promise.all([
-    renderCardOnly(cardData),
-    renderThumbnailOnly(cardData),
-  ]);
+  const [rendered, thumbnail] = await renderFullAndThumbnail(cardData);
   applyNormalizedFields(cardData, rendered.normalizedCardData as CardData);
   const pendingArtUploads = reserveArtUrls(cardData);
 
