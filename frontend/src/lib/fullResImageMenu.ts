@@ -12,32 +12,40 @@ export const THUMBNAIL_IMAGE_MENU_IDS = ["download", "copy-image", "copy-image-u
 
 const slugify = (s: string) => s.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
 
+/** Download a card's full-resolution face image(s) (front, and back if present).
+ *  Shared by the context-menu item and the explicit Download button. No-op if
+ *  the card has no rendered image yet. */
+export function downloadCardImages(card: Card): void {
+  const front = card.renderedUrls?.[0];
+  if (!front) return;
+  const back = card.renderedUrls[1];
+  const name = card.cardData?.name || card.display?.name || "card";
+  const backName = card.display?.backFaceName;
+
+  const download = (src: string, n: string) => {
+    const ext = src.startsWith("data:image/jpeg") ? "jpg" : "png";
+    const a = document.createElement("a");
+    a.href = src;
+    a.download = `${slugify(n)}.${ext}`;
+    a.click();
+  };
+  // Single-image multi-face cards (split/fuse/aftermath/adventure) have one
+  // render but a back-face name — use a combined "front--back" filename.
+  const singleImageMultiFace = !back && !!backName;
+  download(front, singleImageMultiFace ? `${name}--${backName}` : name);
+  if (back && backName) download(back, backName);
+}
+
 /** Full-resolution Download / Copy menu items, mirroring crucible's built-ins
  *  but sourced from card.renderedUrls instead of the displayed (thumbnail) image. */
 export function fullResImageMenuItems(card: Card): MtgCardMenuItem[] {
   const front = card.renderedUrls?.[0];
   if (!front) return [];
-  const back = card.renderedUrls[1];
-  const name = card.cardData?.name || card.display?.name || "card";
-  const backName = card.display?.backFaceName;
 
   return [
     {
       label: "Download Image",
-      action: () => {
-        const download = (src: string, n: string) => {
-          const ext = src.startsWith("data:image/jpeg") ? "jpg" : "png";
-          const a = document.createElement("a");
-          a.href = src;
-          a.download = `${slugify(n)}.${ext}`;
-          a.click();
-        };
-        // Single-image multi-face cards (split/fuse/aftermath/adventure) have one
-        // render but a back-face name — use a combined "front--back" filename.
-        const singleImageMultiFace = !back && !!backName;
-        download(front, singleImageMultiFace ? `${name}--${backName}` : name);
-        if (back && backName) download(back, backName);
-      },
+      action: () => downloadCardImages(card),
     },
     {
       label: "Copy Card Image",

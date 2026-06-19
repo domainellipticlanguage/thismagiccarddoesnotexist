@@ -2,6 +2,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { MtgCard } from "mtg-crucible/react";
 import type { Card } from "../types/card";
 import { deleteCard } from "../api/client";
+import { downloadCardImages } from "../lib/fullResImageMenu";
 import { BugReportButton } from "./BugReportButton";
 
 function fullName(card: Card): string {
@@ -55,6 +56,8 @@ export function CardView({ card, canEdit, canDelete }: { card: Card; canEdit: bo
           )}
           {/* Copy & Remix makes an independent new card, so it's open to anyone. */}
           <Link to={`/card/${card.id}/copy`} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 transition-colors text-sm">Copy & Remix</Link>
+          {/* Explicit alternative to the (hidden) right-click menu's Download. */}
+          <button onClick={() => downloadCardImages(card)} disabled={!card.renderedUrls?.[0]} className="px-4 py-2 bg-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-700 disabled:opacity-50 transition-colors text-sm">Download</button>
           {canDelete && (
             <button onClick={handleDelete} className="px-4 py-2 bg-red-900/50 text-red-300 rounded-lg hover:bg-red-900/80 transition-colors text-sm">Delete</button>
           )}
