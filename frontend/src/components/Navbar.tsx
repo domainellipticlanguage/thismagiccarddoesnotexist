@@ -13,7 +13,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link to="/" className="group font-display text-lg text-gold-400 hover:text-gold-500 transition-colors flex items-center gap-2">
           <span aria-hidden className="font-mono text-gold-500/70 group-hover:text-gold-400 transition-colors">{"{"}</span>
-          <span aria-hidden className="text-xl leading-none -mx-1">🂠</span>
+          <span aria-hidden className="text-xl leading-none -mx-1">🃏</span>
           <span aria-hidden className="font-mono text-gold-500/70 group-hover:text-gold-400 transition-colors">{"}"}</span>
           <span className="ml-1">This Magic Card Does Not Exist</span>
         </Link>
