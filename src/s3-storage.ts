@@ -1,10 +1,7 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { bucketName } from "./aws-config.js";
 
 const s3 = new S3Client({});
-
-function bucketName(): string {
-  return process.env.S3_BUCKET || "thismagiccarddoesnotexist3";
-}
 
 export async function uploadBuffer(
   buffer: Buffer,

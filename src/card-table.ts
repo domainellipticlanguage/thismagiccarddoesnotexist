@@ -9,14 +9,11 @@ import {
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { CardRecord, CardDocument, BugReport, BugReportItem } from "./types.js";
+import { tableName } from "./aws-config.js";
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
-
-function tableName(): string {
-  return process.env.DYNAMODB_TABLE || "thismagiccarddoesnotexist3";
-}
 
 /** Write a card record. If supersededId is given, atomically mark that record superseded in the same transaction. */
 export async function commitCard(record: CardRecord, supersededId?: string): Promise<void> {
