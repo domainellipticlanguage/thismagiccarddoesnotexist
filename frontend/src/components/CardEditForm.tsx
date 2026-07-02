@@ -171,9 +171,11 @@ function parseColorIndicator(text: string): Color[] {
   return out;
 }
 
-function formatColorIndicator(colors: Color[] | undefined): string {
+function formatColorIndicator(colors: Color[] | string | undefined): string {
   if (!colors?.length) return "";
-  return colors.map((c) => COLOR_TO_LETTER[c]).join("");
+  // crucible may hand back a raw string; normalize it through the parser.
+  const list = typeof colors === "string" ? parseColorIndicator(colors) : colors;
+  return list.map((c) => COLOR_TO_LETTER[c]).join("");
 }
 
 // ---------------------------------------------------------------------------
